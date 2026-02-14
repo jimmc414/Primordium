@@ -13,8 +13,10 @@ pub struct SimEngine {
     params_uniform: ParamsUniform,
     params: SimParams,
     pipelines: SimPipelines,
-    bind_group_even: wgpu::BindGroup, // read A -> write B
-    bind_group_odd: wgpu::BindGroup,  // read B -> write A
+    intent_bg_even: wgpu::BindGroup,   // intent: reads buf_a
+    intent_bg_odd: wgpu::BindGroup,    // intent: reads buf_b
+    resolve_bg_even: wgpu::BindGroup,  // resolve: reads A, writes B, reads intent
+    resolve_bg_odd: wgpu::BindGroup,   // resolve: reads B, writes A, reads intent
     tick_count: u32,
 }
 
@@ -26,8 +28,47 @@ impl SimEngine {
         let params_uniform = ParamsUniform::new(device, &params);
         let pipelines = SimPipelines::new(device);
 
-        // Create both bind groups for double-buffered dispatch
-        let bind_group_even = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        // Intent bind groups (3 entries each): voxel_read, intent_buf, params
+        let intent_bg_even = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("intent_bg_even"),
+            layout: &pipelines.intent_declaration_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffers.buffer_a().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buffers.intent_buffer().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: params_uniform.buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        let intent_bg_odd = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("intent_bg_odd"),
+            layout: &pipelines.intent_declaration_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffers.buffer_b().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buffers.intent_buffer().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: params_uniform.buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        // Resolve bind groups (4 entries each): voxel_read, voxel_write, params, intent_buf
+        let resolve_bg_even = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("resolve_bg_even"),
             layout: &pipelines.resolve_execute_bgl,
             entries: &[
@@ -43,10 +84,14 @@ impl SimEngine {
                     binding: 2,
                     resource: params_uniform.buffer.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: buffers.intent_buffer().as_entire_binding(),
+                },
             ],
         });
 
-        let bind_group_odd = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let resolve_bg_odd = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("resolve_bg_odd"),
             layout: &pipelines.resolve_execute_bgl,
             entries: &[
@@ -62,6 +107,10 @@ impl SimEngine {
                     binding: 2,
                     resource: params_uniform.buffer.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: buffers.intent_buffer().as_entire_binding(),
+                },
             ],
         });
 
@@ -70,8 +119,10 @@ impl SimEngine {
             params_uniform,
             params,
             pipelines,
-            bind_group_even,
-            bind_group_odd,
+            intent_bg_even,
+            intent_bg_odd,
+            resolve_bg_even,
+            resolve_bg_odd,
             tick_count: 0,
         }
     }

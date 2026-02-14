@@ -108,6 +108,62 @@ fn genome_get_byte(buf: ptr<storage, array<u32>, read>, idx: u32, byte_index: u3
     return (word >> (byte_in_word * 8u)) & 0xFFu;
 }
 
+// ---- Intent constants ----
+
+const ACTION_NO_ACTION: u32 = 0u;
+const ACTION_DIE: u32 = 1u;
+const ACTION_PREDATE: u32 = 2u;
+const ACTION_REPLICATE: u32 = 3u;
+const ACTION_MOVE: u32 = 4u;
+const ACTION_IDLE: u32 = 5u;
+const DIR_SELF: u32 = 6u;
+
+// ---- Intent encode/decode ----
+// Intent word (u32): [0:2] direction, [3:5] action, [6:31] bid
+
+fn intent_encode(action: u32, direction: u32, bid: u32) -> u32 {
+    return (direction & 7u) | ((action & 7u) << 3u) | ((bid & 0x03FFFFFFu) << 6u);
+}
+
+fn intent_get_direction(intent: u32) -> u32 {
+    return intent & 7u;
+}
+
+fn intent_get_action(intent: u32) -> u32 {
+    return (intent >> 3u) & 7u;
+}
+
+fn intent_get_bid(intent: u32) -> u32 {
+    return (intent >> 6u) & 0x03FFFFFFu;
+}
+
+// ---- Species ID hash (matches Genome::species_id() in Rust) ----
+
+fn compute_species_id(g0: u32, g1: u32, g2: u32, g3: u32) -> u32 {
+    var x = g0 ^ g1 ^ g2 ^ g3;
+    x = ((x >> 8u) ^ x) * 0x6979u;
+    x = ((x >> 8u) ^ x) * 0x0235u;
+    x = (x >> 16u) ^ x;
+    let id = x & 0xFFFFu;
+    return select(id, 1u, id == 0u);  // SIM-5: never zero
+}
+
+// ---- Neighbor / direction utilities ----
+
+fn neighbor_in_direction(pos: vec3<u32>, dir: u32, gs: u32) -> u32 {
+    let offset = NEIGHBORS[dir];
+    let np = vec3<i32>(pos) + offset;
+    if np.x < 0 || np.y < 0 || np.z < 0 ||
+       np.x >= i32(gs) || np.y >= i32(gs) || np.z >= i32(gs) {
+        return 0xFFFFFFFFu;
+    }
+    return grid_index(vec3<u32>(np), gs);
+}
+
+fn opposite_direction(d: u32) -> u32 {
+    return d ^ 1u;
+}
+
 // ---- Color helpers ----
 
 fn hsv_to_rgb(h: f32, s: f32, v: f32) -> vec3<f32> {

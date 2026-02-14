@@ -5,6 +5,7 @@ const VOXEL_STRIDE: usize = 8; // 8 u32 per voxel = 32 bytes
 pub struct VoxelBuffers {
     voxel_buf_a: wgpu::Buffer,
     voxel_buf_b: wgpu::Buffer,
+    intent_buf: wgpu::Buffer,
     grid_size: u32,
     current_read_is_a: bool,
 }
@@ -32,9 +33,19 @@ impl VoxelBuffers {
             mapped_at_creation: false,
         });
 
+        // 1 u32 per voxel for intent encoding
+        let intent_size = total_voxels * 4;
+        let intent_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("intent_buf"),
+            size: intent_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Self {
             voxel_buf_a,
             voxel_buf_b,
+            intent_buf,
             grid_size,
             current_read_is_a: true,
         }
@@ -74,5 +85,9 @@ impl VoxelBuffers {
 
     pub fn grid_size(&self) -> u32 {
         self.grid_size
+    }
+
+    pub fn intent_buffer(&self) -> &wgpu::Buffer {
+        &self.intent_buf
     }
 }
