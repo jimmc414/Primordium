@@ -42,7 +42,7 @@ pub async fn init() -> Result<(), JsValue> {
 
     // Determine grid size based on adapter limits
     let grid_size = 128u32;
-    web_sys::console::log_1(&format!("Grid size: {grid_size}³").into());
+    web_sys::console::log_1(&format!("Grid size: {grid_size}\u{00b3}").into());
 
     // Create sim engine and seed test voxels
     let sim_engine = SimEngine::new(&gpu.device, &gpu.queue, grid_size);
@@ -83,6 +83,7 @@ pub fn frame(dt: f32) {
         };
 
         app.timing.update(dt);
+        let ticks_to_run = app.timing.ticks_due(dt);
 
         // Get surface texture — don't panic on error
         let surface_texture = match app.gpu.surface.get_current_texture() {
@@ -105,11 +106,16 @@ pub fn frame(dt: f32) {
                 label: Some("frame_encoder"),
             });
 
-        // Update render texture from voxel data
+        // Run simulation ticks
+        for _ in 0..ticks_to_run {
+            app.sim_engine.tick(&mut encoder, &app.gpu.queue);
+        }
+
+        // Update render texture from current read buffer
         app.renderer.update_render_texture(
             &mut encoder,
             &app.gpu.device,
-            app.sim_engine.voxel_buffer(),
+            app.sim_engine.current_read_buffer(),
             app.sim_engine.params_buffer(),
         );
 

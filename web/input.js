@@ -1,4 +1,4 @@
-import wasmInit, { init, frame, on_mouse_move, on_scroll, on_key_down } from '../crates/host/pkg/host.js';
+import wasmInit, { init, frame, on_mouse_move, on_scroll, on_key_down, set_paused, single_step, set_tick_rate } from '../crates/host/pkg/host.js';
 
 async function main() {
     const errorDiv = document.getElementById('error-msg');

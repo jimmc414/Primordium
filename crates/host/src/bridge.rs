@@ -39,8 +39,37 @@ pub fn on_key_down(key: String) {
                 "c" | "C" => app.camera.cycle_clip_axis(),
                 "ArrowUp" => app.camera.adjust_clip_position(0.02),
                 "ArrowDown" => app.camera.adjust_clip_position(-0.02),
+                "p" | "P" => app.timing.toggle_pause(),
+                "n" | "N" => app.timing.request_single_step(),
                 _ => {}
             }
+        }
+    });
+}
+
+#[wasm_bindgen]
+pub fn set_paused(paused: bool) {
+    APP.with(|app| {
+        if let Some(ref mut app) = *app.borrow_mut() {
+            app.timing.set_paused(paused);
+        }
+    });
+}
+
+#[wasm_bindgen]
+pub fn single_step() {
+    APP.with(|app| {
+        if let Some(ref mut app) = *app.borrow_mut() {
+            app.timing.request_single_step();
+        }
+    });
+}
+
+#[wasm_bindgen]
+pub fn set_tick_rate(rate: f32) {
+    APP.with(|app| {
+        if let Some(ref mut app) = *app.borrow_mut() {
+            app.timing.set_tick_rate(rate);
         }
     });
 }

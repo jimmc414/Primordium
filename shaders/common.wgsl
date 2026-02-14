@@ -99,6 +99,15 @@ fn prng_seed(voxel_index: u32, tick_count: u32, grid_size: u32, dispatch_salt: u
     return pcg_hash(voxel_index ^ (tick_count * 0x9E3779B9u) ^ (grid_size * 0x85EBCA6Bu) ^ dispatch_salt);
 }
 
+// ---- Genome byte accessor ----
+
+fn genome_get_byte(buf: ptr<storage, array<u32>, read>, idx: u32, byte_index: u32) -> u32 {
+    let word_index = byte_index / 4u;
+    let byte_in_word = byte_index % 4u;
+    let word = voxel_get_genome_word(buf, idx, word_index);
+    return (word >> (byte_in_word * 8u)) & 0xFFu;
+}
+
 // ---- Color helpers ----
 
 fn hsv_to_rgb(h: f32, s: f32, v: f32) -> vec3<f32> {
