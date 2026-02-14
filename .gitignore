@@ -77,6 +77,8 @@ tmp/
 build/
 out/
 target/
+pkg/
+*.wasm
 
 # Python
 __pycache__/

@@ -1,0 +1,27 @@
+[package]
+name = "host"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+types = { path = "../types" }
+sim-core = { path = "../sim-core" }
+renderer = { path = "../renderer" }
+glam = "0.32"
+wgpu = { version = "27.0", default-features = false, features = ["webgpu", "wgsl"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+    "Document",
+    "Window",
+    "Element",
+    "HtmlCanvasElement",
+    "console",
+]

@@ -1,0 +1,10 @@
+[package]
+name = "sim-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+types = { path = "../types" }
+glam = "0.32"
+wgpu = { version = "27.0", default-features = false, features = ["wgsl"] }
+bytemuck = { version = "1.25", features = ["derive"] }
