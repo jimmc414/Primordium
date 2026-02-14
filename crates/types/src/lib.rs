@@ -3,9 +3,11 @@ pub mod genome;
 pub mod voxel;
 pub mod params;
 pub mod intent;
+pub mod commands;
 
 pub use grid::*;
 pub use genome::*;
 pub use voxel::*;
 pub use params::*;
 pub use intent::*;
+pub use commands::*;

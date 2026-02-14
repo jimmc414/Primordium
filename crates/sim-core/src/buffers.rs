@@ -2,10 +2,16 @@ use wgpu;
 
 const VOXEL_STRIDE: usize = 8; // 8 u32 per voxel = 32 bytes
 
+// Command buffer layout: word 0 = command_count, words 1-3 = padding,
+// words 4+ = commands at 16-word stride (max 64 commands).
+// Total: (4 + 64*16) * 4 = 4112 bytes, rounded to 4128 for 16-byte alignment.
+const COMMAND_BUF_SIZE: u64 = 4128;
+
 pub struct VoxelBuffers {
     voxel_buf_a: wgpu::Buffer,
     voxel_buf_b: wgpu::Buffer,
     intent_buf: wgpu::Buffer,
+    command_buf: wgpu::Buffer,
     grid_size: u32,
     current_read_is_a: bool,
 }
@@ -42,10 +48,18 @@ impl VoxelBuffers {
             mapped_at_creation: false,
         });
 
+        let command_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("command_buf"),
+            size: COMMAND_BUF_SIZE,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Self {
             voxel_buf_a,
             voxel_buf_b,
             intent_buf,
+            command_buf,
             grid_size,
             current_read_is_a: true,
         }
@@ -89,5 +103,9 @@ impl VoxelBuffers {
 
     pub fn intent_buffer(&self) -> &wgpu::Buffer {
         &self.intent_buf
+    }
+
+    pub fn command_buffer(&self) -> &wgpu::Buffer {
+        &self.command_buf
     }
 }

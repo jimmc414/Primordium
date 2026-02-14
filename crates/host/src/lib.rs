@@ -7,6 +7,7 @@ use renderer::camera::Camera;
 use renderer::Renderer;
 use sim_core::SimEngine;
 use timing::FrameTiming;
+use bridge::Tool;
 
 pub struct App {
     pub gpu: gpu::GpuContext,
@@ -14,6 +15,9 @@ pub struct App {
     pub renderer: Renderer,
     pub camera: Camera,
     pub timing: FrameTiming,
+    pub current_tool: Tool,
+    pub brush_radius: u32,
+    pub pending_commands: Vec<types::Command>,
 }
 
 #[wasm_bindgen]
@@ -63,6 +67,9 @@ pub async fn init() -> Result<(), JsValue> {
         renderer,
         camera,
         timing,
+        current_tool: Tool::None,
+        brush_radius: 0,
+        pending_commands: Vec::new(),
     };
 
     bridge::APP.with(|cell| {
@@ -106,9 +113,13 @@ pub fn frame(dt: f32) {
                 label: Some("frame_encoder"),
             });
 
-        // Run simulation ticks
-        for _ in 0..ticks_to_run {
-            app.sim_engine.tick(&mut encoder, &app.gpu.queue);
+        // Drain pending commands for this frame
+        let commands: Vec<types::Command> = app.pending_commands.drain(..).collect();
+
+        // Run simulation ticks (commands applied only on first tick)
+        for i in 0..ticks_to_run {
+            let cmds = if i == 0 { &commands[..] } else { &[] };
+            app.sim_engine.tick(&mut encoder, &app.gpu.queue, cmds);
         }
 
         // Update render texture from current read buffer

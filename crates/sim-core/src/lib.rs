@@ -13,10 +13,12 @@ pub struct SimEngine {
     params_uniform: ParamsUniform,
     params: SimParams,
     pipelines: SimPipelines,
-    intent_bg_even: wgpu::BindGroup,   // intent: reads buf_a
-    intent_bg_odd: wgpu::BindGroup,    // intent: reads buf_b
-    resolve_bg_even: wgpu::BindGroup,  // resolve: reads A, writes B, reads intent
-    resolve_bg_odd: wgpu::BindGroup,   // resolve: reads B, writes A, reads intent
+    intent_bg_even: wgpu::BindGroup,     // intent: reads buf_a
+    intent_bg_odd: wgpu::BindGroup,      // intent: reads buf_b
+    resolve_bg_even: wgpu::BindGroup,    // resolve: reads A, writes B, reads intent
+    resolve_bg_odd: wgpu::BindGroup,     // resolve: reads B, writes A, reads intent
+    apply_cmd_bg_even: wgpu::BindGroup,  // apply_commands: reads/writes buf_a
+    apply_cmd_bg_odd: wgpu::BindGroup,   // apply_commands: reads/writes buf_b
     tick_count: u32,
 }
 
@@ -114,6 +116,45 @@ impl SimEngine {
             ],
         });
 
+        // Apply commands bind groups (3 entries each): voxel_buf (rw), command_buf, params
+        let apply_cmd_bg_even = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("apply_cmd_bg_even"),
+            layout: &pipelines.apply_commands_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffers.buffer_a().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buffers.command_buffer().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: params_uniform.buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        let apply_cmd_bg_odd = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("apply_cmd_bg_odd"),
+            layout: &pipelines.apply_commands_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffers.buffer_b().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buffers.command_buffer().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: params_uniform.buffer.as_entire_binding(),
+                },
+            ],
+        });
+
         Self {
             buffers,
             params_uniform,
@@ -123,6 +164,8 @@ impl SimEngine {
             intent_bg_odd,
             resolve_bg_even,
             resolve_bg_odd,
+            apply_cmd_bg_even,
+            apply_cmd_bg_odd,
             tick_count: 0,
         }
     }
@@ -199,6 +242,8 @@ impl SimEngine {
             genome.bytes[1] = (30 + (i % 15) * 5) as u8;   // metabolic_rate
             genome.bytes[2] = 200;                           // replication_threshold
             genome.bytes[3] = (i * 3) as u8;                // mutation_rate
+            genome.bytes[4] = (60 + (i % 10) * 15) as u8;  // movement_bias
+            genome.bytes[5] = (40 + (i % 8) * 20) as u8;   // chemotaxis_strength
             genome.bytes[9] = (60 + (i % 10) * 15) as u8;  // photosynthetic_rate
             genome.bytes[10] = 128;                          // energy_split_ratio
             let species = genome.species_id();
@@ -270,5 +315,9 @@ impl SimEngine {
 
     pub fn grid_size(&self) -> u32 {
         self.buffers.grid_size()
+    }
+
+    pub fn command_buffer(&self) -> &wgpu::Buffer {
+        self.buffers.command_buffer()
     }
 }

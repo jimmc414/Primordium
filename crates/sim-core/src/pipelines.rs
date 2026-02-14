@@ -3,12 +3,15 @@ use wgpu;
 const COMMON_WGSL: &str = include_str!("../../../shaders/common.wgsl");
 const INTENT_DECLARATION_WGSL: &str = include_str!("../../../shaders/intent_declaration.wgsl");
 const RESOLVE_EXECUTE_WGSL: &str = include_str!("../../../shaders/resolve_execute.wgsl");
+const APPLY_COMMANDS_WGSL: &str = include_str!("../../../shaders/apply_commands.wgsl");
 
 pub struct SimPipelines {
     pub intent_declaration: wgpu::ComputePipeline,
     pub intent_declaration_bgl: wgpu::BindGroupLayout,
     pub resolve_execute: wgpu::ComputePipeline,
     pub resolve_execute_bgl: wgpu::BindGroupLayout,
+    pub apply_commands: wgpu::ComputePipeline,
+    pub apply_commands_bgl: wgpu::BindGroupLayout,
 }
 
 impl SimPipelines {
@@ -150,11 +153,76 @@ impl SimPipelines {
                 cache: None,
             });
 
+        // ---- Apply commands pipeline ----
+        let apply_source = format!("{}\n{}", COMMON_WGSL, APPLY_COMMANDS_WGSL);
+        let apply_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("apply_commands"),
+            source: wgpu::ShaderSource::Wgsl(apply_source.into()),
+        });
+
+        let apply_commands_bgl =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("apply_commands_bgl"),
+                entries: &[
+                    // binding 0: voxel buffer (read_write — modified in-place)
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // binding 1: command buffer (read-only storage)
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // binding 2: sim params uniform
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+
+        let apply_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("apply_commands_pl"),
+            bind_group_layouts: &[&apply_commands_bgl],
+            push_constant_ranges: &[],
+        });
+
+        let apply_commands =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("apply_commands_pipeline"),
+                layout: Some(&apply_pl),
+                module: &apply_shader,
+                entry_point: Some("apply_commands_main"),
+                compilation_options: Default::default(),
+                cache: None,
+            });
+
         Self {
             intent_declaration,
             intent_declaration_bgl,
             resolve_execute,
             resolve_execute_bgl,
+            apply_commands,
+            apply_commands_bgl,
         }
     }
 }

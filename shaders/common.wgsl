@@ -108,6 +108,15 @@ fn genome_get_byte(buf: ptr<storage, array<u32>, read>, idx: u32, byte_index: u3
     return (word >> (byte_in_word * 8u)) & 0xFFu;
 }
 
+// ---- Genome byte accessor from raw words (not buffer pointer) ----
+
+fn genome_get_byte_from_words(g0: u32, g1: u32, g2: u32, g3: u32, byte_index: u32) -> u32 {
+    var words = array<u32, 4>(g0, g1, g2, g3);
+    let word_i = byte_index / 4u;
+    let shift = (byte_index % 4u) * 8u;
+    return (words[word_i] >> shift) & 0xFFu;
+}
+
 // ---- Intent constants ----
 
 const ACTION_NO_ACTION: u32 = 0u;

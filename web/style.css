@@ -32,3 +32,50 @@ html, body {
     border: 1px solid #f44;
     border-radius: 8px;
 }
+
+#toolbar {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tool-btn {
+    background: rgba(30, 30, 30, 0.85);
+    color: #ccc;
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-family: monospace;
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+    min-width: 110px;
+}
+
+.tool-btn:hover {
+    background: rgba(60, 60, 60, 0.9);
+    color: #fff;
+}
+
+.tool-btn.active {
+    background: rgba(40, 100, 180, 0.85);
+    color: #fff;
+    border-color: #4af;
+}
+
+.brush-label {
+    color: #aaa;
+    font-family: monospace;
+    font-size: 12px;
+    margin-top: 8px;
+}
+
+#brush-radius {
+    width: 100px;
+    margin-top: 2px;
+    accent-color: #4af;
+}

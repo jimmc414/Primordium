@@ -1,6 +1,6 @@
 // ============================================================
-// resolve_execute.wgsl — M3: Intent-aware resolve + execute.
-// Metabolism, death, nutrient cycling, AND replication.
+// resolve_execute.wgsl — M4: Intent-aware resolve + execute.
+// Metabolism, death, nutrient cycling, replication, AND movement.
 // Prepended with common.wgsl at pipeline creation.
 //
 // Bind group 0:
@@ -13,21 +13,20 @@
 // ---- CASE ENUMERATION (SH-1: mandatory before implementation) ----
 //
 // EMPTY voxel at position P:
-//   E1: No neighbor has REPLICATE intent targeting P
-//       → nutrient spawn roll or stay empty (same as M2)
-//   E2: Exactly one neighbor has REPLICATE targeting P
-//       → write offspring (mutated genome, split energy, new species_id)
-//   E4: Multiple neighbors have REPLICATE targeting P
-//       → highest bid wins (tie-break: higher voxel index)
-//       → winner's offspring written (same as E2)
+//   E1: No contenders → nutrient spawn roll or stay empty
+//   E2: Exactly one REPLICATE contender → write offspring
+//   E3: Exactly one MOVE contender → copy mover's state, apply movement cost + metabolism
+//   E4: Multiple contenders (any mix of REPLICATE/MOVE) → highest bid wins
+//       If winner is REPLICATE → apply E2
+//       If winner is MOVE → apply E3
 //
 // PROTOCELL voxel at position P:
-//   P1: own intent = DIE → convert to WASTE
-//   P2a: own intent = REPLICATE and won contest at target
-//        → deduct split energy from parent, then +gain -cost (metabolism)
-//   P2b: own intent = REPLICATE but lost contest at target
-//        → keep full energy, then +gain -cost (metabolism)
-//   P3: own intent = IDLE → +gain -cost (metabolism only)
+//   P1: own intent = DIE → WASTE
+//   P2a: own REPLICATE won at target → deduct split energy, metabolism
+//   P2b: own REPLICATE lost → keep energy, metabolism
+//   P3: own intent = IDLE → metabolism only
+//   P4a: own MOVE won at target → write EMPTY at source (mover left)
+//   P4b: own MOVE lost → keep position, metabolism
 //   All P cases: if energy reaches 0 after metabolism → WASTE
 //
 // NUTRIENT voxel at position P:
@@ -105,14 +104,16 @@ fn write_empty(idx: u32) {
     write_voxel(idx, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u);
 }
 
-// ---- Replicate winner resolution ----
+// ---- Contender winner resolution ----
 // Reads 6 neighbors of target_pos. For each: check if intent action is REPLICATE
-// and direction points toward target_pos (using opposite_direction).
-// Returns (winner_voxel_index, winner_bid). If no winner, returns (0xFFFFFFFF, 0).
+// or MOVE and direction points toward target_pos (using opposite_direction).
+// Returns vec3(winner_voxel_index, winner_bid, winner_action).
+// If no winner, returns (0xFFFFFFFF, 0, 0).
 
-fn find_replicate_winner(target_pos: vec3<u32>, gs: u32) -> vec2<u32> {
+fn find_contender_winner(target_pos: vec3<u32>, gs: u32) -> vec3<u32> {
     var best_idx: u32 = 0xFFFFFFFFu;
     var best_bid: u32 = 0u;
+    var best_action: u32 = 0u;
 
     for (var d: u32 = 0u; d < 6u; d++) {
         let ni = neighbor_in_direction(target_pos, d, gs);
@@ -121,7 +122,7 @@ fn find_replicate_winner(target_pos: vec3<u32>, gs: u32) -> vec2<u32> {
         }
         let intent = intent_read[ni];
         let action = intent_get_action(intent);
-        if action != ACTION_REPLICATE {
+        if action != ACTION_REPLICATE && action != ACTION_MOVE {
             continue;
         }
         // Check if this neighbor's intent direction points toward target_pos.
@@ -136,10 +137,11 @@ fn find_replicate_winner(target_pos: vec3<u32>, gs: u32) -> vec2<u32> {
         if bid > best_bid || (bid == best_bid && ni > best_idx) {
             best_bid = bid;
             best_idx = ni;
+            best_action = action;
         }
     }
 
-    return vec2<u32>(best_idx, best_bid);
+    return vec3<u32>(best_idx, best_bid, best_action);
 }
 
 // ---- Mutation ----
@@ -182,10 +184,11 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var rng = prng_seed(idx, u32(params.tick_count), gs, 0x2u);
 
     switch vtype {
-        case 0u: { // EMPTY — cases E1, E2, E4
-            // Check if any neighbor wants to replicate into this cell
-            let winner = find_replicate_winner(gid, gs);
+        case 0u: { // EMPTY — cases E1, E2, E3, E4
+            // Check if any neighbor wants to replicate or move into this cell
+            let winner = find_contender_winner(gid, gs);
             let winner_idx = winner.x;
+            let winner_action = winner.z;
 
             if winner_idx == 0xFFFFFFFFu {
                 // E1: No contenders — nutrient spawn or stay empty
@@ -200,9 +203,8 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 } else {
                     write_empty(idx);
                 }
-            } else {
-                // E2/E4: Winner replicates into this cell
-                // Read parent genome + energy from winner in voxel_read
+            } else if winner_action == ACTION_REPLICATE {
+                // E2/E4 (REPLICATE winner): Write offspring into this cell
                 let parent_energy = voxel_get_energy(&voxel_read, winner_idx);
                 let split_ratio_byte = genome_get_byte(&voxel_read, winner_idx, 10u);
                 let mutation_rate = genome_get_byte(&voxel_read, winner_idx, 3u);
@@ -227,9 +229,62 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                     pack_word0(VOXEL_PROTOCELL, 0u, offspring_energy),
                     pack_word1(0u, species_id),
                     g0, g1, g2, g3, 0u, 0u);
+            } else {
+                // E3/E4 (MOVE winner): Copy mover's state to destination
+                let mover_energy = voxel_get_energy(&voxel_read, winner_idx);
+                let mover_age = voxel_get_age(&voxel_read, winner_idx);
+                let mover_species = voxel_get_species_id(&voxel_read, winner_idx);
+                let g0 = voxel_get_genome_word(&voxel_read, winner_idx, 0u);
+                let g1 = voxel_get_genome_word(&voxel_read, winner_idx, 1u);
+                let g2 = voxel_get_genome_word(&voxel_read, winner_idx, 2u);
+                let g3 = voxel_get_genome_word(&voxel_read, winner_idx, 3u);
+
+                // Read genome params from raw words (no mutation on move)
+                let metabolic_efficiency = genome_get_byte_from_words(g0, g1, g2, g3, 0u);
+                let metabolic_rate = genome_get_byte_from_words(g0, g1, g2, g3, 1u);
+                let photosynthetic_rate = genome_get_byte_from_words(g0, g1, g2, g3, 9u);
+
+                // Metabolism at destination: scan OWN neighbors for energy gain
+                var gain: u32 = 0u;
+                for (var d: u32 = 0u; d < 6u; d++) {
+                    let ni = neighbor_in_direction(gid, d, gs);
+                    if ni == 0xFFFFFFFFu {
+                        continue;
+                    }
+                    let ntype = voxel_get_type(&voxel_read, ni);
+                    if ntype == VOXEL_ENERGY_SOURCE {
+                        gain += (photosynthetic_rate * u32(params.energy_from_source)) / 255u;
+                    } else if ntype == VOXEL_NUTRIENT {
+                        gain += (metabolic_efficiency * u32(params.energy_from_nutrient)) / 255u;
+                    }
+                }
+
+                let cost = u32(params.metabolic_cost_base) * (255u + metabolic_rate) / 255u;
+                let movement_cost = u32(params.movement_energy_cost);
+
+                var new_energy = min(mover_energy + gain, u32(params.max_energy));
+                // Saturating subtract movement cost (SIM-4)
+                new_energy = select(0u, new_energy - movement_cost, new_energy >= movement_cost);
+                // Saturating subtract metabolic cost (SIM-4)
+                new_energy = select(0u, new_energy - cost, new_energy >= cost);
+
+                let new_age = min(mover_age + 1u, 0xFFFFu);
+
+                if new_energy == 0u {
+                    // Death at destination → WASTE
+                    write_voxel(idx,
+                        pack_word0(VOXEL_WASTE, 0u, 0u),
+                        pack_word1(0u, mover_species),
+                        0u, 0u, 0u, 0u, 0u, 0u);
+                } else {
+                    write_voxel(idx,
+                        pack_word0(VOXEL_PROTOCELL, 0u, new_energy),
+                        pack_word1(new_age, mover_species),
+                        g0, g1, g2, g3, 0u, 0u);
+                }
             }
         }
-        case 4u: { // PROTOCELL — cases P1, P2a, P2b, P3
+        case 4u: { // PROTOCELL — cases P1, P2a, P2b, P3, P4a, P4b
             let energy = voxel_get_energy(&voxel_read, idx);
             let age = voxel_get_age(&voxel_read, idx);
             let species_id = voxel_get_species_id(&voxel_read, idx);
@@ -263,8 +318,9 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 return;
             }
 
-            // Determine energy after replication cost
+            // Determine energy after replication/move cost
             var work_energy = energy;
+            var moved_away = false;
 
             if my_action == ACTION_REPLICATE {
                 // Compute target position
@@ -273,7 +329,7 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
                 if target_ni != 0xFFFFFFFFu {
                     let target_pos = grid_coords(target_ni, gs);
-                    let winner = find_replicate_winner(target_pos, gs);
+                    let winner = find_contender_winner(target_pos, gs);
 
                     if winner.x == idx {
                         // P2a: Won the replication contest
@@ -282,8 +338,28 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                     }
                     // P2b: Lost — work_energy stays as full energy
                 }
+            } else if my_action == ACTION_MOVE {
+                let my_dir = intent_get_direction(my_intent);
+                let target_ni = neighbor_in_direction(gid, my_dir, gs);
+
+                if target_ni != 0xFFFFFFFFu {
+                    let target_pos = grid_coords(target_ni, gs);
+                    let winner = find_contender_winner(target_pos, gs);
+
+                    if winner.x == idx {
+                        // P4a: Won the move contest — this cell becomes EMPTY
+                        moved_away = true;
+                    }
+                    // P4b: Lost — stay in place, metabolism as normal
+                }
             }
             // P3: IDLE — work_energy stays as full energy
+
+            if moved_away {
+                // P4a: Protocell moved away, write EMPTY at source
+                write_empty(idx);
+                return;
+            }
 
             // Metabolism: scan neighbors for energy gain
             var gain: u32 = 0u;
