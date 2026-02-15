@@ -1,6 +1,6 @@
 // ============================================================
-// resolve_execute.wgsl — M5: Intent-aware resolve + execute.
-// Metabolism, death, nutrient cycling, replication, AND movement.
+// resolve_execute.wgsl — M6: Intent-aware resolve + execute.
+// Metabolism, death, nutrient cycling, replication, movement, AND predation.
 // Temperature modulates metabolism cost and mutation rate.
 // Prepended with common.wgsl at pipeline creation.
 //
@@ -23,13 +23,21 @@
 //       If winner is MOVE → apply E3
 //
 // PROTOCELL voxel at position P:
+//   PP1: Check if this protocell is targeted by PREDATE intents
+//     PP1a: A predator's bid wins → this cell → WASTE (prey consumed, own intent cancelled)
+//     PP1b: No predator targeting this cell → process own intent normally
 //   P1: own intent = DIE → WASTE
+//   P5a: own PREDATE won at target → gain predation_energy_fraction * prey_energy, metabolism
+//   P5b: own PREDATE lost → fallback to idle, metabolism only
 //   P2a: own REPLICATE won at target → deduct split energy, metabolism
 //   P2b: own REPLICATE lost → keep energy, metabolism
 //   P3: own intent = IDLE → metabolism only
 //   P4a: own MOVE won at target → write EMPTY at source (mover left)
 //   P4b: own MOVE lost → keep position, metabolism
 //   All P cases: if energy reaches 0 after metabolism → WASTE
+//
+//   MOVE ghost prevention:
+//   E3+: If MOVE winner is being predated (PP1 at mover's position), write EMPTY instead
 //
 // NUTRIENT voxel at position P:
 //   N1: no adjacent protocells → age++, copy
@@ -151,6 +159,39 @@ fn find_contender_winner(target_pos: vec3<u32>, gs: u32) -> vec3<u32> {
     return vec3<u32>(best_idx, best_bid, best_action);
 }
 
+// ---- Predation winner resolution ----
+// Reads 6 neighbors of target_pos for PREDATE intents targeting it.
+// Returns vec2(winner_voxel_index, winner_bid).
+// If no predator, returns (0xFFFFFFFF, 0).
+
+fn find_predation_winner(target_pos: vec3<u32>, gs: u32) -> vec2<u32> {
+    var best_idx: u32 = 0xFFFFFFFFu;
+    var best_bid: u32 = 0u;
+
+    for (var d: u32 = 0u; d < 6u; d++) {
+        let ni = neighbor_in_direction(target_pos, d, gs);
+        if ni == 0xFFFFFFFFu {
+            continue;
+        }
+        let intent = intent_read[ni];
+        let action = intent_get_action(intent);
+        if action != ACTION_PREDATE {
+            continue;
+        }
+        let intent_dir = intent_get_direction(intent);
+        if intent_dir != opposite_direction(d) {
+            continue;
+        }
+        let bid = intent_get_bid(intent);
+        if bid > best_bid || (bid == best_bid && ni > best_idx) {
+            best_bid = bid;
+            best_idx = ni;
+        }
+    }
+
+    return vec2<u32>(best_idx, best_bid);
+}
+
 // ---- Mutation ----
 // 16 PRNG advances (one per genome byte).
 // If (roll & 0xFF) < mutation_rate → replace byte with (roll >> 8) & 0xFF.
@@ -242,6 +283,13 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                     pack_word1(0u, species_id),
                     g0, g1, g2, g3, 0u, 0u);
             } else {
+                // E3/E4 (MOVE winner): Check if mover is being predated
+                let mover_pos = grid_coords(winner_idx, gs);
+                let pred_check = find_predation_winner(mover_pos, gs);
+                if pred_check.x != 0xFFFFFFFFu {
+                    // Mover is being predated — don't copy, stay EMPTY
+                    write_empty(idx);
+                } else {
                 // E3/E4 (MOVE winner): Copy mover's state to destination
                 let mover_energy = voxel_get_energy(&voxel_read, winner_idx);
                 let mover_age = voxel_get_age(&voxel_read, winner_idx);
@@ -297,9 +345,10 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                         pack_word1(new_age, mover_species),
                         g0, g1, g2, g3, 0u, 0u);
                 }
+                } // end pred_check else
             }
         }
-        case 4u: { // PROTOCELL — cases P1, P2a, P2b, P3, P4a, P4b
+        case 4u: { // PROTOCELL — cases PP1, P1, P5, P2, P3, P4
             let energy = voxel_get_energy(&voxel_read, idx);
             let age = voxel_get_age(&voxel_read, idx);
             let species_id = voxel_get_species_id(&voxel_read, idx);
@@ -320,6 +369,17 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 _ = pcg_next(&rng);
             }
 
+            // PP1: Check if this protocell is being predated
+            let pred_winner = find_predation_winner(gid, gs);
+            if pred_winner.x != 0xFFFFFFFFu {
+                // PP1a: We're prey — become WASTE. Own intent cancelled.
+                write_voxel(idx,
+                    pack_word0(VOXEL_WASTE, 0u, 0u),
+                    pack_word1(0u, species_id),
+                    0u, 0u, 0u, 0u, 0u, 0u);
+                return;
+            }
+
             // Read own intent
             let my_intent = intent_read[idx];
             let my_action = intent_get_action(my_intent);
@@ -333,11 +393,27 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 return;
             }
 
-            // Determine energy after replication/move cost
+            // Determine energy after replication/move/predation cost
             var work_energy = energy;
             var moved_away = false;
 
-            if my_action == ACTION_REPLICATE {
+            if my_action == ACTION_PREDATE {
+                let my_dir = intent_get_direction(my_intent);
+                let target_ni = neighbor_in_direction(gid, my_dir, gs);
+
+                if target_ni != 0xFFFFFFFFu {
+                    let target_pos = grid_coords(target_ni, gs);
+                    let pred_win = find_predation_winner(target_pos, gs);
+
+                    if pred_win.x == idx {
+                        // P5a: Won predation — gain energy fraction from prey
+                        let prey_energy = voxel_get_energy(&voxel_read, target_ni);
+                        let gained = u32(f32(prey_energy) * params.predation_energy_fraction);
+                        work_energy = min(energy + gained, u32(params.max_energy));
+                    }
+                    // P5b: Lost — work_energy stays as full energy (idle fallback)
+                }
+            } else if my_action == ACTION_REPLICATE {
                 // Compute target position
                 let my_dir = intent_get_direction(my_intent);
                 let target_ni = neighbor_in_direction(gid, my_dir, gs);

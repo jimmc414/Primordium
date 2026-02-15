@@ -1,5 +1,5 @@
 // ============================================================
-// update_render_texture.wgsl — M5: Maps voxel data to RGBA in 3D texture.
+// update_render_texture.wgsl — M6: Maps voxel data to RGBA in 3D texture.
 // Supports temperature overlay mode.
 // Prepended with common.wgsl at pipeline creation.
 //
@@ -75,10 +75,12 @@ fn update_render_texture_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             color = vec4<f32>(1.0, 0.95, 0.2, 1.0);
         }
         case 4u: {
-            // PROTOCELL — HSV from species_id and energy
+            // PROTOCELL — HSV from species_id and energy; predators more saturated
             let hue = fract(f32(species_id) * 0.618033988749);
             let val = clamp(f32(energy) / params.max_energy, 0.1, 1.0);
-            let rgb = hsv_to_rgb(hue, 0.7, val);
+            let predation_cap = genome_get_byte(&voxel_buf, idx, 7u);
+            let sat = select(0.7, 1.0, predation_cap > 128u);
+            let rgb = hsv_to_rgb(hue, sat, val);
             color = vec4<f32>(rgb, 1.0);
         }
         case 5u: {

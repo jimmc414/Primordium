@@ -1,6 +1,6 @@
 // ============================================================
-// intent_declaration.wgsl — M5: Intent declaration pass.
-// Each protocell declares one intent (DIE, REPLICATE, MOVE, or IDLE).
+// intent_declaration.wgsl — M6: Intent declaration pass.
+// Each protocell declares one intent (DIE, PREDATE, REPLICATE, MOVE, or IDLE).
 // Prepended with common.wgsl at pipeline creation.
 //
 // Bind group 0:
@@ -63,9 +63,14 @@ fn intent_declaration_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // Exactly 5 PRNG advances per protocell, always consumed regardless of branch
     let roll_movement_decision = pcg_next(&rng);   // advance 1
     let roll_movement_direction = pcg_next(&rng);   // advance 2
-    let roll_predation_target = pcg_next(&rng);     // advance 3 (unused until M6)
+    let roll_predation_target = pcg_next(&rng);     // advance 3 (prey target selection)
     let roll_replication_target = pcg_next(&rng);    // advance 4
     let roll_bid = pcg_next(&rng);                   // advance 5
+
+    // Read predation genes for neighbor scan
+    let predation_capability = genome_get_byte(&voxel_read, idx, 7u);
+    let predation_aggression = genome_get_byte(&voxel_read, idx, 8u);
+    let prey_threshold = (predation_aggression * u32(params.max_energy)) / 255u;
 
     // Priority 1: DIE — energy == 0
     if energy == 0u {
@@ -73,10 +78,12 @@ fn intent_declaration_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
 
-    // Scan neighbors once: collect empty dirs, food dirs
+    // Scan neighbors once: collect empty dirs, food dirs, prey dirs
     var empty_count: u32 = 0u;
     var empty_dirs: array<u32, 6>;
     var food_dir_mask: u32 = 0u; // bit d set if direction d has food neighbor
+    var prey_count: u32 = 0u;
+    var prey_dirs: array<u32, 6>;
 
     for (var d: u32 = 0u; d < 6u; d++) {
         let ni = neighbor_in_direction(gid, d, gs);
@@ -89,10 +96,25 @@ fn intent_declaration_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             empty_count++;
         } else if ntype == VOXEL_NUTRIENT || ntype == VOXEL_ENERGY_SOURCE {
             food_dir_mask |= (1u << d);
+        } else if ntype == VOXEL_PROTOCELL && predation_capability > 0u {
+            let n_energy = voxel_get_energy(&voxel_read, ni);
+            if n_energy < prey_threshold {
+                prey_dirs[prey_count] = d;
+                prey_count++;
+            }
         }
     }
 
-    // Priority 2: REPLICATE — energy > threshold AND empty neighbor exists
+    // Priority 2: PREDATE — predation_capability > 0 AND prey neighbor exists
+    if predation_capability > 0u && prey_count > 0u {
+        let chosen = roll_predation_target % prey_count;
+        let target_dir = prey_dirs[chosen];
+        let bid = roll_bid % (energy + 1u);
+        intent_buf[idx] = intent_encode(ACTION_PREDATE, target_dir, bid);
+        return;
+    }
+
+    // Priority 3: REPLICATE — energy > threshold AND empty neighbor exists
     let replication_threshold_byte = genome_get_byte(&voxel_read, idx, 2u);
     let threshold = (u32(params.replication_energy_min) * replication_threshold_byte) / 255u;
 
@@ -104,7 +126,7 @@ fn intent_declaration_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
 
-    // Priority 3: MOVE — movement_bias check, then pick direction (with chemotaxis)
+    // Priority 4: MOVE — movement_bias check, then pick direction (with chemotaxis)
     let movement_bias = genome_get_byte(&voxel_read, idx, 4u);
     let chemotaxis_strength = genome_get_byte(&voxel_read, idx, 5u);
 
@@ -137,6 +159,6 @@ fn intent_declaration_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
 
-    // Priority 4: IDLE — fallback
+    // Priority 5: IDLE — fallback
     intent_buf[idx] = intent_encode(ACTION_IDLE, DIR_SELF, 0u);
 }
