@@ -1,11 +1,13 @@
 // ============================================================
-// update_render_texture.wgsl — Maps voxel data to RGBA in 3D texture.
+// update_render_texture.wgsl — M5: Maps voxel data to RGBA in 3D texture.
+// Supports temperature overlay mode.
 // Prepended with common.wgsl at pipeline creation.
 //
 // Bind group 0:
 //   [0] voxel_buf: storage<array<u32>, read>
 //   [1] render_tex: texture_storage_3d<rgba8unorm, write>
 //   [2] params: uniform<SimParams>
+//   [3] temp_buf: storage<array<f32>, read>
 // ============================================================
 
 struct SimParams {
@@ -25,11 +27,16 @@ struct SimParams {
     temp_sensitivity: f32,
     predation_energy_fraction: f32,
     max_energy: f32,
+    overlay_mode: f32,
+    _pad17: f32,
+    _pad18: f32,
+    _pad19: f32,
 };
 
 @group(0) @binding(0) var<storage, read> voxel_buf: array<u32>;
 @group(0) @binding(1) var render_tex: texture_storage_3d<rgba8unorm, write>;
 @group(0) @binding(2) var<uniform> params: SimParams;
+@group(0) @binding(3) var<storage, read> temp_buf: array<f32>;
 
 @compute @workgroup_size(4, 4, 4)
 fn update_render_texture_main(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -90,6 +97,13 @@ fn update_render_texture_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         default: {
             color = vec4<f32>(1.0, 0.0, 1.0, 1.0); // magenta = error
         }
+    }
+
+    // Temperature overlay mode
+    if params.overlay_mode > 0.5 {
+        let temp = temp_buf[idx];
+        // Blue (cold=0) to Red (hot=1) gradient
+        color = vec4<f32>(temp, 0.2 * (1.0 - abs(temp * 2.0 - 1.0)), 1.0 - temp, max(temp, 1.0 - temp));
     }
 
     textureStore(render_tex, gid, color);

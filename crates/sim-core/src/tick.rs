@@ -51,19 +51,29 @@ impl SimEngine {
             );
         }
 
-        // 3. Clear intent buffer (SIM-2: prevent ghost intents)
-        encoder.clear_buffer(self.buffers.intent_buffer(), 0, None);
-
-        // 4. Select bind groups by parity (even=read A, odd=read B)
-        let (intent_bg, resolve_bg) = if self.buffers.current_read_is_a() {
-            (&self.intent_bg_even, &self.resolve_bg_even)
+        // 3. Temperature diffusion dispatch
+        let (temp_bg, intent_bg, resolve_bg) = if self.buffers.current_read_is_a() {
+            (&self.temp_diffusion_bg_even, &self.intent_bg_even, &self.resolve_bg_even)
         } else {
-            (&self.intent_bg_odd, &self.resolve_bg_odd)
+            (&self.temp_diffusion_bg_odd, &self.intent_bg_odd, &self.resolve_bg_odd)
         };
 
         let wg = self.buffers.grid_size() / 4;
 
-        // 5. Dispatch 1: intent_declaration
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("temperature_diffusion_pass"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&self.pipelines.temperature_diffusion);
+            pass.set_bind_group(0, temp_bg, &[]);
+            pass.dispatch_workgroups(wg, wg, wg);
+        }
+
+        // 4. Clear intent buffer (SIM-2: prevent ghost intents)
+        encoder.clear_buffer(self.buffers.intent_buffer(), 0, None);
+
+        // 5. Dispatch 2: intent_declaration (reads voxel_read + temp_write)
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("intent_declaration_pass"),
@@ -74,7 +84,7 @@ impl SimEngine {
             pass.dispatch_workgroups(wg, wg, wg);
         }
 
-        // 6. Dispatch 2: resolve_execute
+        // 6. Dispatch 3: resolve_execute (reads voxel_read + intent_buf + temp_write)
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("resolve_execute_pass"),
@@ -85,7 +95,7 @@ impl SimEngine {
             pass.dispatch_workgroups(wg, wg, wg);
         }
 
-        // 7. Swap buffers + increment tick
+        // 7. Swap buffers (voxel + temp) + increment tick
         self.buffers.swap();
         self.tick_count += 1;
     }

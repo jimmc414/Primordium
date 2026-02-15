@@ -1,5 +1,5 @@
 // ============================================================
-// intent_declaration.wgsl — M4: Intent declaration pass.
+// intent_declaration.wgsl — M5: Intent declaration pass.
 // Each protocell declares one intent (DIE, REPLICATE, MOVE, or IDLE).
 // Prepended with common.wgsl at pipeline creation.
 //
@@ -7,6 +7,7 @@
 //   [0] voxel_read:  storage<array<u32>, read>
 //   [1] intent_buf:  storage<array<u32>, read_write>
 //   [2] params:      uniform<SimParams>
+//   [3] temp_read:   storage<array<f32>, read>
 // ============================================================
 
 struct SimParams {
@@ -26,11 +27,16 @@ struct SimParams {
     temp_sensitivity: f32,
     predation_energy_fraction: f32,
     max_energy: f32,
+    overlay_mode: f32,
+    _pad17: f32,
+    _pad18: f32,
+    _pad19: f32,
 };
 
 @group(0) @binding(0) var<storage, read> voxel_read: array<u32>;
 @group(0) @binding(1) var<storage, read_write> intent_buf: array<u32>;
 @group(0) @binding(2) var<uniform> params: SimParams;
+@group(0) @binding(3) var<storage, read> temp_read: array<f32>;
 
 @compute @workgroup_size(4, 4, 4)
 fn intent_declaration_main(@builtin(global_invocation_id) gid: vec3<u32>) {

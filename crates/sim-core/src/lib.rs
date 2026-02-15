@@ -11,14 +11,16 @@ use types::{SimParams, Voxel, VoxelType, Genome};
 pub struct SimEngine {
     buffers: VoxelBuffers,
     params_uniform: ParamsUniform,
-    params: SimParams,
+    pub params: SimParams,
     pipelines: SimPipelines,
-    intent_bg_even: wgpu::BindGroup,     // intent: reads buf_a
-    intent_bg_odd: wgpu::BindGroup,      // intent: reads buf_b
-    resolve_bg_even: wgpu::BindGroup,    // resolve: reads A, writes B, reads intent
-    resolve_bg_odd: wgpu::BindGroup,     // resolve: reads B, writes A, reads intent
+    intent_bg_even: wgpu::BindGroup,     // intent: reads buf_a + temp_b
+    intent_bg_odd: wgpu::BindGroup,      // intent: reads buf_b + temp_a
+    resolve_bg_even: wgpu::BindGroup,    // resolve: reads A, writes B, reads intent + temp_b
+    resolve_bg_odd: wgpu::BindGroup,     // resolve: reads B, writes A, reads intent + temp_a
     apply_cmd_bg_even: wgpu::BindGroup,  // apply_commands: reads/writes buf_a
     apply_cmd_bg_odd: wgpu::BindGroup,   // apply_commands: reads/writes buf_b
+    temp_diffusion_bg_even: wgpu::BindGroup,  // reads temp_a, writes temp_b, reads voxel_a
+    temp_diffusion_bg_odd: wgpu::BindGroup,   // reads temp_b, writes temp_a, reads voxel_b
     tick_count: u32,
 }
 
@@ -30,7 +32,9 @@ impl SimEngine {
         let params_uniform = ParamsUniform::new(device, &params);
         let pipelines = SimPipelines::new(device);
 
-        // Intent bind groups (3 entries each): voxel_read, intent_buf, params
+        // Intent bind groups (4 entries each): voxel_read, intent_buf, params, temp_read
+        // Even tick: diffusion writes temp_b, so intent reads temp_b
+        // Odd tick: diffusion writes temp_a, so intent reads temp_a
         let intent_bg_even = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("intent_bg_even"),
             layout: &pipelines.intent_declaration_bgl,
@@ -46,6 +50,10 @@ impl SimEngine {
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: params_uniform.buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: buffers.temp_buffer_b().as_entire_binding(),
                 },
             ],
         });
@@ -66,10 +74,16 @@ impl SimEngine {
                     binding: 2,
                     resource: params_uniform.buffer.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: buffers.temp_buffer_a().as_entire_binding(),
+                },
             ],
         });
 
-        // Resolve bind groups (4 entries each): voxel_read, voxel_write, params, intent_buf
+        // Resolve bind groups (5 entries each): voxel_read, voxel_write, params, intent_buf, temp_read
+        // Even tick: diffusion writes temp_b, so resolve reads temp_b
+        // Odd tick: diffusion writes temp_a, so resolve reads temp_a
         let resolve_bg_even = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("resolve_bg_even"),
             layout: &pipelines.resolve_execute_bgl,
@@ -89,6 +103,10 @@ impl SimEngine {
                 wgpu::BindGroupEntry {
                     binding: 3,
                     resource: buffers.intent_buffer().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: buffers.temp_buffer_b().as_entire_binding(),
                 },
             ],
         });
@@ -112,6 +130,10 @@ impl SimEngine {
                 wgpu::BindGroupEntry {
                     binding: 3,
                     resource: buffers.intent_buffer().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: buffers.temp_buffer_a().as_entire_binding(),
                 },
             ],
         });
@@ -155,6 +177,53 @@ impl SimEngine {
             ],
         });
 
+        // Temperature diffusion bind groups (4 entries each): temp_read, temp_write, voxel_read, params
+        let temp_diffusion_bg_even = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("temp_diffusion_bg_even"),
+            layout: &pipelines.temperature_diffusion_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffers.temp_buffer_a().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buffers.temp_buffer_b().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: buffers.buffer_a().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: params_uniform.buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        let temp_diffusion_bg_odd = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("temp_diffusion_bg_odd"),
+            layout: &pipelines.temperature_diffusion_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffers.temp_buffer_b().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buffers.temp_buffer_a().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: buffers.buffer_b().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: params_uniform.buffer.as_entire_binding(),
+                },
+            ],
+        });
+
         Self {
             buffers,
             params_uniform,
@@ -166,6 +235,8 @@ impl SimEngine {
             resolve_bg_odd,
             apply_cmd_bg_even,
             apply_cmd_bg_odd,
+            temp_diffusion_bg_even,
+            temp_diffusion_bg_odd,
             tick_count: 0,
         }
     }
@@ -301,6 +372,13 @@ impl SimEngine {
             queue.write_buffer(self.buffers.buffer_a(), byte_offset, bytes);
         }
 
+        // Initialize temperature buffer A to ambient temperature (0.5)
+        let ambient = 0.5f32;
+        let ambient_bytes = ambient.to_le_bytes();
+        let total_voxels = (gs as usize).pow(3);
+        let init_data: Vec<u8> = ambient_bytes.repeat(total_voxels);
+        queue.write_buffer(self.buffers.temp_buffer_a(), 0, &init_data);
+
         // Upload params
         self.params_uniform.upload(queue, &self.params);
     }
@@ -319,5 +397,9 @@ impl SimEngine {
 
     pub fn command_buffer(&self) -> &wgpu::Buffer {
         self.buffers.command_buffer()
+    }
+
+    pub fn current_temp_buffer(&self) -> &wgpu::Buffer {
+        self.buffers.current_temp_read()
     }
 }

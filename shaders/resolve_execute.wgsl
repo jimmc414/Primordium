@@ -1,6 +1,7 @@
 // ============================================================
-// resolve_execute.wgsl — M4: Intent-aware resolve + execute.
+// resolve_execute.wgsl — M5: Intent-aware resolve + execute.
 // Metabolism, death, nutrient cycling, replication, AND movement.
+// Temperature modulates metabolism cost and mutation rate.
 // Prepended with common.wgsl at pipeline creation.
 //
 // Bind group 0:
@@ -8,6 +9,7 @@
 //   [1] voxel_write:  storage<array<u32>, read_write>
 //   [2] params:       uniform<SimParams>
 //   [3] intent_read:  storage<array<u32>, read>
+//   [4] temp_read:    storage<array<f32>, read>
 // ============================================================
 //
 // ---- CASE ENUMERATION (SH-1: mandatory before implementation) ----
@@ -59,12 +61,17 @@ struct SimParams {
     temp_sensitivity: f32,
     predation_energy_fraction: f32,
     max_energy: f32,
+    overlay_mode: f32,
+    _pad17: f32,
+    _pad18: f32,
+    _pad19: f32,
 };
 
 @group(0) @binding(0) var<storage, read> voxel_read: array<u32>;
 @group(0) @binding(1) var<storage, read_write> voxel_write: array<u32>;
 @group(0) @binding(2) var<uniform> params: SimParams;
 @group(0) @binding(3) var<storage, read> intent_read: array<u32>;
+@group(0) @binding(4) var<storage, read> temp_read: array<f32>;
 
 // ---- Local helpers ----
 
@@ -218,8 +225,13 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 var g2 = voxel_get_genome_word(&voxel_read, winner_idx, 2u);
                 var g3 = voxel_get_genome_word(&voxel_read, winner_idx, 3u);
 
+                // Temperature-modulated mutation rate
+                let local_temp = temp_read[idx];
+                let temp_mod = compute_temp_modifier(local_temp, params.temp_sensitivity);
+                let effective_mutation_rate = min(u32(f32(mutation_rate) * temp_mod), 255u);
+
                 // Mutate genome (16 PRNG advances)
-                mutate_genome(&rng, mutation_rate, &g0, &g1, &g2, &g3);
+                mutate_genome(&rng, effective_mutation_rate, &g0, &g1, &g2, &g3);
 
                 // Compute species_id from MUTATED genome (SIM-5: never 0)
                 let species_id = compute_species_id(g0, g1, g2, g3);
@@ -260,13 +272,16 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 }
 
                 let cost = u32(params.metabolic_cost_base) * (255u + metabolic_rate) / 255u;
+                let local_temp_move = temp_read[idx];
+                let temp_mod_move = compute_temp_modifier(local_temp_move, params.temp_sensitivity);
+                let effective_cost_move = u32(f32(cost) * temp_mod_move);
                 let movement_cost = u32(params.movement_energy_cost);
 
                 var new_energy = min(mover_energy + gain, u32(params.max_energy));
                 // Saturating subtract movement cost (SIM-4)
                 new_energy = select(0u, new_energy - movement_cost, new_energy >= movement_cost);
                 // Saturating subtract metabolic cost (SIM-4)
-                new_energy = select(0u, new_energy - cost, new_energy >= cost);
+                new_energy = select(0u, new_energy - effective_cost_move, new_energy >= effective_cost_move);
 
                 let new_age = min(mover_age + 1u, 0xFFFFu);
 
@@ -378,12 +393,15 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
             // Metabolic cost: base * (1 + metabolic_rate/255)
             let cost = u32(params.metabolic_cost_base) * (255u + metabolic_rate) / 255u;
+            let local_temp_p = temp_read[idx];
+            let temp_mod_p = compute_temp_modifier(local_temp_p, params.temp_sensitivity);
+            let effective_cost_p = u32(f32(cost) * temp_mod_p);
 
             // Apply gain, clamp to max_energy
             var new_energy = min(work_energy + gain, u32(params.max_energy));
 
             // Saturating subtract cost (SIM-4)
-            new_energy = select(0u, new_energy - cost, new_energy >= cost);
+            new_energy = select(0u, new_energy - effective_cost_p, new_energy >= effective_cost_p);
 
             let new_age = min(age + 1u, 0xFFFFu);
 

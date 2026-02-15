@@ -1,4 +1,4 @@
-import wasmInit, { init, frame, on_mouse_move, on_scroll, on_key_down, set_paused, single_step, set_tick_rate, set_tool, set_brush_radius, on_mouse_down } from '../crates/host/pkg/host.js';
+import wasmInit, { init, frame, on_mouse_move, on_scroll, on_key_down, set_paused, single_step, set_tick_rate, set_tool, set_brush_radius, set_overlay_mode, on_mouse_down } from '../crates/host/pkg/host.js';
 
 async function main() {
     const errorDiv = document.getElementById('error-msg');
@@ -50,7 +50,7 @@ async function main() {
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
     // Expose bridge functions for ui.js
-    window._bridge = { set_tool, set_brush_radius };
+    window._bridge = { set_tool, set_brush_radius, set_overlay_mode };
 
     // Animation loop
     let lastTime = performance.now();

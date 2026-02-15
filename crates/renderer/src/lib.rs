@@ -63,8 +63,9 @@ impl Renderer {
         device: &wgpu::Device,
         voxel_buf: &wgpu::Buffer,
         params_buf: &wgpu::Buffer,
+        temp_buf: &wgpu::Buffer,
     ) {
-        let bg = self.render_texture.create_bind_group(device, voxel_buf, params_buf);
+        let bg = self.render_texture.create_bind_group(device, voxel_buf, params_buf, temp_buf);
         self.render_texture.encode(encoder, &bg);
     }
 

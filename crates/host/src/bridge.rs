@@ -18,6 +18,8 @@ pub enum Tool {
     Seed = 4,
     Toxin = 5,
     Remove = 6,
+    HeatSource = 7,
+    ColdSource = 8,
 }
 
 #[wasm_bindgen]
@@ -60,6 +62,8 @@ pub fn on_key_down(key: String) {
                 "4" => app.current_tool = Tool::Seed,
                 "5" => app.current_tool = Tool::Toxin,
                 "6" => app.current_tool = Tool::Remove,
+                "7" => app.current_tool = Tool::HeatSource,
+                "8" => app.current_tool = Tool::ColdSource,
                 "Escape" => app.current_tool = Tool::None,
                 _ => {}
             }
@@ -106,8 +110,19 @@ pub fn set_tool(tool_id: u32) {
                 4 => Tool::Seed,
                 5 => Tool::Toxin,
                 6 => Tool::Remove,
+                7 => Tool::HeatSource,
+                8 => Tool::ColdSource,
                 _ => Tool::None,
             };
+        }
+    });
+}
+
+#[wasm_bindgen]
+pub fn set_overlay_mode(mode: u32) {
+    APP.with(|app| {
+        if let Some(ref mut app) = *app.borrow_mut() {
+            app.overlay_mode = mode;
         }
     });
 }
@@ -152,6 +167,12 @@ pub fn on_mouse_down(canvas_x: f32, canvas_y: f32, canvas_w: f32, canvas_h: f32)
                     ),
                     Tool::Remove => types::Command::new(
                         types::CommandType::RemoveVoxel, x, y, z, app.brush_radius, 0, 0,
+                    ),
+                    Tool::HeatSource => types::Command::new(
+                        types::CommandType::PlaceVoxel, x, y, z, app.brush_radius, 6, 0,
+                    ),
+                    Tool::ColdSource => types::Command::new(
+                        types::CommandType::PlaceVoxel, x, y, z, app.brush_radius, 7, 0,
                     ),
                     Tool::None => return,
                 };

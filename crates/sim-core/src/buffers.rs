@@ -10,6 +10,8 @@ const COMMAND_BUF_SIZE: u64 = 4128;
 pub struct VoxelBuffers {
     voxel_buf_a: wgpu::Buffer,
     voxel_buf_b: wgpu::Buffer,
+    temp_buf_a: wgpu::Buffer,
+    temp_buf_b: wgpu::Buffer,
     intent_buf: wgpu::Buffer,
     command_buf: wgpu::Buffer,
     grid_size: u32,
@@ -39,6 +41,21 @@ impl VoxelBuffers {
             mapped_at_creation: false,
         });
 
+        // 1 f32 per voxel for temperature field
+        let temp_size = total_voxels * 4;
+        let temp_buf_a = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("temp_buf_a"),
+            size: temp_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let temp_buf_b = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("temp_buf_b"),
+            size: temp_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         // 1 u32 per voxel for intent encoding
         let intent_size = total_voxels * 4;
         let intent_buf = device.create_buffer(&wgpu::BufferDescriptor {
@@ -58,6 +75,8 @@ impl VoxelBuffers {
         Self {
             voxel_buf_a,
             voxel_buf_b,
+            temp_buf_a,
+            temp_buf_b,
             intent_buf,
             command_buf,
             grid_size,
@@ -107,5 +126,29 @@ impl VoxelBuffers {
 
     pub fn command_buffer(&self) -> &wgpu::Buffer {
         &self.command_buf
+    }
+
+    pub fn temp_buffer_a(&self) -> &wgpu::Buffer {
+        &self.temp_buf_a
+    }
+
+    pub fn temp_buffer_b(&self) -> &wgpu::Buffer {
+        &self.temp_buf_b
+    }
+
+    pub fn current_temp_read(&self) -> &wgpu::Buffer {
+        if self.current_read_is_a {
+            &self.temp_buf_a
+        } else {
+            &self.temp_buf_b
+        }
+    }
+
+    pub fn current_temp_write(&self) -> &wgpu::Buffer {
+        if self.current_read_is_a {
+            &self.temp_buf_b
+        } else {
+            &self.temp_buf_a
+        }
     }
 }

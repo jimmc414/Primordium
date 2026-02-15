@@ -196,3 +196,7 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> vec3<f32> {
     }
     return rgb + vec3<f32>(m, m, m);
 }
+
+fn compute_temp_modifier(local_temp: f32, sensitivity: f32) -> f32 {
+    return max(1.0 + sensitivity * (local_temp - 0.5), 0.1);
+}

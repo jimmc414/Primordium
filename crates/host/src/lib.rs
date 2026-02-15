@@ -18,6 +18,7 @@ pub struct App {
     pub current_tool: Tool,
     pub brush_radius: u32,
     pub pending_commands: Vec<types::Command>,
+    pub overlay_mode: u32,
 }
 
 #[wasm_bindgen]
@@ -70,6 +71,7 @@ pub async fn init() -> Result<(), JsValue> {
         current_tool: Tool::None,
         brush_radius: 0,
         pending_commands: Vec::new(),
+        overlay_mode: 0,
     };
 
     bridge::APP.with(|cell| {
@@ -116,6 +118,9 @@ pub fn frame(dt: f32) {
         // Drain pending commands for this frame
         let commands: Vec<types::Command> = app.pending_commands.drain(..).collect();
 
+        // Set overlay mode in params before ticks
+        app.sim_engine.params.overlay_mode = app.overlay_mode as f32;
+
         // Run simulation ticks (commands applied only on first tick)
         for i in 0..ticks_to_run {
             let cmds = if i == 0 { &commands[..] } else { &[] };
@@ -128,6 +133,7 @@ pub fn frame(dt: f32) {
             &app.gpu.device,
             app.sim_engine.current_read_buffer(),
             app.sim_engine.params_buffer(),
+            app.sim_engine.current_temp_buffer(),
         );
 
         // Render frame (ray march + wireframe)

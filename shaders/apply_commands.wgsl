@@ -27,6 +27,10 @@ struct SimParams {
     temp_sensitivity: f32,
     predation_energy_fraction: f32,
     max_energy: f32,
+    overlay_mode: f32,
+    _pad17: f32,
+    _pad18: f32,
+    _pad19: f32,
 };
 
 @group(0) @binding(0) var<storage, read_write> voxel_buf: array<u32>;

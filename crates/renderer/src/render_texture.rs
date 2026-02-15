@@ -55,6 +55,17 @@ impl RenderTexturePipeline {
                     },
                     count: None,
                 },
+                // binding 3: temp buffer (read-only storage)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -104,6 +115,7 @@ impl RenderTexturePipeline {
         device: &wgpu::Device,
         voxel_buf: &wgpu::Buffer,
         params_buf: &wgpu::Buffer,
+        temp_buf: &wgpu::Buffer,
     ) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("render_texture_bg"),
@@ -120,6 +132,10 @@ impl RenderTexturePipeline {
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: params_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: temp_buf.as_entire_binding(),
                 },
             ],
         })

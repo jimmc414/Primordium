@@ -4,6 +4,7 @@ const COMMON_WGSL: &str = include_str!("../../../shaders/common.wgsl");
 const INTENT_DECLARATION_WGSL: &str = include_str!("../../../shaders/intent_declaration.wgsl");
 const RESOLVE_EXECUTE_WGSL: &str = include_str!("../../../shaders/resolve_execute.wgsl");
 const APPLY_COMMANDS_WGSL: &str = include_str!("../../../shaders/apply_commands.wgsl");
+const TEMPERATURE_DIFFUSION_WGSL: &str = include_str!("../../../shaders/temperature_diffusion.wgsl");
 
 pub struct SimPipelines {
     pub intent_declaration: wgpu::ComputePipeline,
@@ -12,6 +13,8 @@ pub struct SimPipelines {
     pub resolve_execute_bgl: wgpu::BindGroupLayout,
     pub apply_commands: wgpu::ComputePipeline,
     pub apply_commands_bgl: wgpu::BindGroupLayout,
+    pub temperature_diffusion: wgpu::ComputePipeline,
+    pub temperature_diffusion_bgl: wgpu::BindGroupLayout,
 }
 
 impl SimPipelines {
@@ -55,6 +58,17 @@ impl SimPipelines {
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // binding 3: temp read buffer (read-only storage)
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
@@ -126,6 +140,17 @@ impl SimPipelines {
                     // binding 3: intent buffer (read-only storage)
                     wgpu::BindGroupLayoutEntry {
                         binding: 3,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // binding 4: temp read buffer (read-only storage)
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: true },
@@ -216,6 +241,80 @@ impl SimPipelines {
                 cache: None,
             });
 
+        // ---- Temperature diffusion pipeline ----
+        let temp_source = format!("{}\n{}", COMMON_WGSL, TEMPERATURE_DIFFUSION_WGSL);
+        let temp_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("temperature_diffusion"),
+            source: wgpu::ShaderSource::Wgsl(temp_source.into()),
+        });
+
+        let temperature_diffusion_bgl =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("temperature_diffusion_bgl"),
+                entries: &[
+                    // binding 0: temp read buffer (read-only storage)
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // binding 1: temp write buffer (read_write storage)
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // binding 2: voxel read buffer (read-only storage)
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // binding 3: sim params uniform
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+
+        let temp_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("temperature_diffusion_pl"),
+            bind_group_layouts: &[&temperature_diffusion_bgl],
+            push_constant_ranges: &[],
+        });
+
+        let temperature_diffusion =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("temperature_diffusion_pipeline"),
+                layout: Some(&temp_pl),
+                module: &temp_shader,
+                entry_point: Some("temperature_diffusion_main"),
+                compilation_options: Default::default(),
+                cache: None,
+            });
+
         Self {
             intent_declaration,
             intent_declaration_bgl,
@@ -223,6 +322,8 @@ impl SimPipelines {
             resolve_execute_bgl,
             apply_commands,
             apply_commands_bgl,
+            temperature_diffusion,
+            temperature_diffusion_bgl,
         }
     }
 }

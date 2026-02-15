@@ -6,6 +6,8 @@ const tools = [
     { id: 4, name: 'Seed', key: '4' },
     { id: 5, name: 'Toxin', key: '5' },
     { id: 6, name: 'Remove', key: '6' },
+    { id: 7, name: 'Heat', key: '7' },
+    { id: 8, name: 'Cold', key: '8' },
 ];
 
 let activeTool = 0;
@@ -45,6 +47,21 @@ function createToolbar() {
 
     toolbar.appendChild(sliderLabel);
     toolbar.appendChild(slider);
+
+    // Overlay toggle button
+    const overlayBtn = document.createElement('button');
+    overlayBtn.className = 'tool-btn';
+    overlayBtn.textContent = 'T Temp';
+    overlayBtn.dataset.overlay = '0';
+    overlayBtn.addEventListener('click', () => {
+        const mode = overlayBtn.dataset.overlay === '0' ? 1 : 0;
+        overlayBtn.dataset.overlay = String(mode);
+        overlayBtn.classList.toggle('active', mode === 1);
+        if (window._bridge) {
+            window._bridge.set_overlay_mode(mode);
+        }
+    });
+    toolbar.appendChild(overlayBtn);
 }
 
 function selectTool(id) {
@@ -64,7 +81,7 @@ function updateButtons() {
 
 // Listen for keyboard tool shortcuts (synced with bridge.rs)
 window.addEventListener('keydown', (e) => {
-    const keyMap = { '1': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6 };
+    const keyMap = { '1': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8 };
     if (keyMap[e.key] !== undefined) {
         activeTool = keyMap[e.key];
         updateButtons();

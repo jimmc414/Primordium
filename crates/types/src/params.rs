@@ -18,6 +18,10 @@ pub struct SimParams {
     pub temp_sensitivity: f32,
     pub predation_energy_fraction: f32,
     pub max_energy: f32,
+    pub overlay_mode: f32,   // 0.0=normal, 1.0=temperature
+    pub _pad17: f32,
+    pub _pad18: f32,
+    pub _pad19: f32,
 }
 
 impl Default for SimParams {
@@ -39,6 +43,10 @@ impl Default for SimParams {
             temp_sensitivity: 1.0,
             predation_energy_fraction: 0.5,
             max_energy: 1000.0,
+            overlay_mode: 0.0,
+            _pad17: 0.0,
+            _pad18: 0.0,
+            _pad19: 0.0,
         }
     }
 }
@@ -46,7 +54,7 @@ impl Default for SimParams {
 impl SimParams {
     /// Serialize all fields to bytes, padded to 16-byte alignment.
     pub fn to_bytes(&self) -> Vec<u8> {
-        let fields: [f32; 16] = [
+        let fields: [f32; 20] = [
             self.grid_size,
             self.tick_count,
             self.dt,
@@ -63,12 +71,16 @@ impl SimParams {
             self.temp_sensitivity,
             self.predation_energy_fraction,
             self.max_energy,
+            self.overlay_mode,
+            self._pad17,
+            self._pad18,
+            self._pad19,
         ];
         let mut bytes = Vec::with_capacity(fields.len() * 4);
         for f in &fields {
             bytes.extend_from_slice(&f.to_le_bytes());
         }
-        // Already 64 bytes = 16 fields * 4 bytes, which is 16-byte aligned
+        // 80 bytes = 20 fields * 4 bytes, which is 16-byte aligned
         bytes
     }
 }
@@ -81,7 +93,7 @@ mod tests {
     fn to_bytes_length_aligned() {
         let p = SimParams::default();
         let bytes = p.to_bytes();
-        assert_eq!(bytes.len(), 64); // 16 fields * 4 bytes
+        assert_eq!(bytes.len(), 80); // 20 fields * 4 bytes
         assert_eq!(bytes.len() % 16, 0, "must be 16-byte aligned");
     }
 
