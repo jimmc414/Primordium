@@ -104,4 +104,12 @@ mod tests {
         let val = f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
         assert_eq!(val, 64.0);
     }
+
+    #[test]
+    fn to_bytes_deterministic() {
+        let p = SimParams::default();
+        let a = p.to_bytes();
+        let b = p.to_bytes();
+        assert_eq!(a, b);
+    }
 }

@@ -57,4 +57,16 @@ mod tests {
     fn neighbor_offsets_count() {
         assert_eq!(neighbor_offsets().len(), 6);
     }
+
+    #[test]
+    fn neighbor_offsets_symmetry() {
+        let offsets = neighbor_offsets();
+        for (dx, dy, dz) in &offsets {
+            let neg = (-dx, -dy, -dz);
+            assert!(
+                offsets.contains(&neg),
+                "offset ({dx},{dy},{dz}) has no negation in list"
+            );
+        }
+    }
 }

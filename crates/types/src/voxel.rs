@@ -184,4 +184,34 @@ mod tests {
         assert_eq!(VoxelType::from_u8(8), VoxelType::Empty);
         assert_eq!(VoxelType::from_u8(255), VoxelType::Empty);
     }
+
+    #[test]
+    fn pack_energy_boundaries() {
+        for energy in [0u16, 1, 65534, 65535] {
+            let v = Voxel {
+                voxel_type: VoxelType::Protocell,
+                energy,
+                ..Default::default()
+            };
+            let v2 = Voxel::unpack(v.pack());
+            assert_eq!(v2.energy, energy, "energy {energy} not preserved");
+        }
+    }
+
+    #[test]
+    fn pack_genome_all_bytes() {
+        let mut genome = Genome::default();
+        for i in 0u8..16 {
+            genome.bytes[i as usize] = i * 17;
+        }
+        let v = Voxel {
+            voxel_type: VoxelType::Protocell,
+            genome,
+            ..Default::default()
+        };
+        let v2 = Voxel::unpack(v.pack());
+        for i in 0..16 {
+            assert_eq!(v2.genome.bytes[i], (i as u8) * 17, "genome byte {i} mismatch");
+        }
+    }
 }

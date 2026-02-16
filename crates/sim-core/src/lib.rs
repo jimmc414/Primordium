@@ -482,14 +482,6 @@ impl SimEngine {
         }
     }
 
-    /// Get the buffer to write voxels to during seeding (buffer A / pool A).
-    fn voxel_write_target(&self) -> &wgpu::Buffer {
-        match &self.mode {
-            SimMode::Dense(d) => d.buffers.buffer_a(),
-            SimMode::Sparse(s) => s.buffers.pool_a(),
-        }
-    }
-
     fn seed_petri_dish(&mut self, queue: &wgpu::Queue) {
         let gs = self.grid_size();
         let center = gs / 2;

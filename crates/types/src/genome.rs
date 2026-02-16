@@ -91,4 +91,33 @@ mod tests {
         assert_eq!(g.metabolic_efficiency(), 42);
         assert_eq!(g.energy_split_ratio(), 200);
     }
+
+    #[test]
+    fn species_id_deterministic() {
+        let g = Genome { bytes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] };
+        assert_eq!(g.species_id(), 30752);
+    }
+
+    #[test]
+    fn species_hash_sensitivity() {
+        let mut changed = 0u32;
+        for i in 0..100u32 {
+            let mut bytes_a = [0u8; 16];
+            let mut bytes_b = [0u8; 16];
+            for j in 0..16 {
+                bytes_a[j] = ((i * 7 + j as u32 * 13) & 0xFF) as u8;
+                bytes_b[j] = bytes_a[j];
+            }
+            // Flip one bit in a pseudo-random byte
+            let byte_idx = (i as usize) % 16;
+            let bit_idx = (i as usize / 16) % 8;
+            bytes_b[byte_idx] ^= 1 << bit_idx;
+            let ga = Genome { bytes: bytes_a };
+            let gb = Genome { bytes: bytes_b };
+            if ga.species_id() != gb.species_id() {
+                changed += 1;
+            }
+        }
+        assert!(changed >= 90, "only {changed}/100 single-bit flips changed species_id");
+    }
 }
