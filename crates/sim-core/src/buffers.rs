@@ -6,6 +6,7 @@ const VOXEL_STRIDE: usize = 8; // 8 u32 per voxel = 32 bytes
 // words 4+ = commands at 16-word stride (max 64 commands).
 // Total: (4 + 64*16) * 4 = 4112 bytes, rounded to 4128 for 16-byte alignment.
 const COMMAND_BUF_SIZE: u64 = 4128;
+const STATS_BUF_SIZE: u64 = 128; // 32 × u32 × 4 bytes
 
 pub struct VoxelBuffers {
     voxel_buf_a: wgpu::Buffer,
@@ -14,6 +15,8 @@ pub struct VoxelBuffers {
     temp_buf_b: wgpu::Buffer,
     intent_buf: wgpu::Buffer,
     command_buf: wgpu::Buffer,
+    stats_buf: wgpu::Buffer,
+    stats_staging: wgpu::Buffer,
     grid_size: u32,
     current_read_is_a: bool,
 }
@@ -72,6 +75,20 @@ impl VoxelBuffers {
             mapped_at_creation: false,
         });
 
+        let stats_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("stats_buf"),
+            size: STATS_BUF_SIZE,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let stats_staging = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("stats_staging"),
+            size: STATS_BUF_SIZE,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
         Self {
             voxel_buf_a,
             voxel_buf_b,
@@ -79,6 +96,8 @@ impl VoxelBuffers {
             temp_buf_b,
             intent_buf,
             command_buf,
+            stats_buf,
+            stats_staging,
             grid_size,
             current_read_is_a: true,
         }
@@ -134,6 +153,14 @@ impl VoxelBuffers {
 
     pub fn temp_buffer_b(&self) -> &wgpu::Buffer {
         &self.temp_buf_b
+    }
+
+    pub fn stats_buffer(&self) -> &wgpu::Buffer {
+        &self.stats_buf
+    }
+
+    pub fn stats_staging_buffer(&self) -> &wgpu::Buffer {
+        &self.stats_staging
     }
 
     pub fn current_temp_read(&self) -> &wgpu::Buffer {

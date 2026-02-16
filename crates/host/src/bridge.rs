@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 use std::cell::RefCell;
 use glam::Vec4;
+use js_sys;
 
 use crate::App;
 
@@ -64,6 +65,7 @@ pub fn on_key_down(key: String) {
                 "6" => app.current_tool = Tool::Remove,
                 "7" => app.current_tool = Tool::HeatSource,
                 "8" => app.current_tool = Tool::ColdSource,
+                "t" | "T" => app.overlay_mode = (app.overlay_mode + 1) % 4,
                 "Escape" => app.current_tool = Tool::None,
                 _ => {}
             }
@@ -132,6 +134,99 @@ pub fn set_brush_radius(radius: u32) {
     APP.with(|app| {
         if let Some(ref mut app) = *app.borrow_mut() {
             app.brush_radius = radius.min(5);
+        }
+    });
+}
+
+#[wasm_bindgen]
+pub fn request_pick(canvas_x: f32, canvas_y: f32, canvas_w: f32, canvas_h: f32) {
+    APP.with(|app| {
+        if let Some(ref mut app) = *app.borrow_mut() {
+            let nx = canvas_x / canvas_w;
+            let ny = canvas_y / canvas_h;
+            let gs = app.sim_engine.grid_size();
+            if let Some((x, y, z)) = ray_cast_grid(&app.camera, nx, ny, gs) {
+                app.pick_coords = Some((x, y, z));
+                app.pick_requested = true;
+                app.latest_pick = None;
+            }
+        }
+    });
+}
+
+#[wasm_bindgen]
+pub fn get_pick_result() -> JsValue {
+    APP.with(|app| {
+        let borrow = app.borrow();
+        if let Some(ref app) = *borrow {
+            if let Some(ref pick) = app.latest_pick {
+                let obj = js_sys::Object::new();
+                let _ = js_sys::Reflect::set(&obj, &"x".into(), &JsValue::from(pick.x));
+                let _ = js_sys::Reflect::set(&obj, &"y".into(), &JsValue::from(pick.y));
+                let _ = js_sys::Reflect::set(&obj, &"z".into(), &JsValue::from(pick.z));
+                let _ = js_sys::Reflect::set(&obj, &"voxel_type".into(), &JsValue::from(pick.voxel_type));
+                let _ = js_sys::Reflect::set(&obj, &"energy".into(), &JsValue::from(pick.energy));
+                let _ = js_sys::Reflect::set(&obj, &"age".into(), &JsValue::from(pick.age));
+                let _ = js_sys::Reflect::set(&obj, &"species_id".into(), &JsValue::from(pick.species_id));
+                let genome = js_sys::Array::new();
+                for b in &pick.genome {
+                    genome.push(&JsValue::from(*b));
+                }
+                let _ = js_sys::Reflect::set(&obj, &"genome".into(), &genome);
+                return obj.into();
+            }
+        }
+        JsValue::NULL
+    })
+}
+
+#[wasm_bindgen]
+pub fn get_stats() -> JsValue {
+    APP.with(|app| {
+        let borrow = app.borrow();
+        if let Some(ref app) = *borrow {
+            if let Some(ref stats) = app.latest_stats {
+                let obj = js_sys::Object::new();
+                let _ = js_sys::Reflect::set(&obj, &"population".into(), &JsValue::from(stats.population));
+                let _ = js_sys::Reflect::set(&obj, &"total_energy".into(), &JsValue::from(stats.total_energy));
+                let _ = js_sys::Reflect::set(&obj, &"species_count".into(), &JsValue::from(stats.species_count));
+                let _ = js_sys::Reflect::set(&obj, &"max_energy".into(), &JsValue::from(stats.max_energy));
+                let species = js_sys::Array::new();
+                for (sid, count) in &stats.species_histogram {
+                    let entry = js_sys::Array::new();
+                    entry.push(&JsValue::from(*sid));
+                    entry.push(&JsValue::from(*count));
+                    species.push(&entry);
+                }
+                let _ = js_sys::Reflect::set(&obj, &"species".into(), &species);
+                return obj.into();
+            }
+        }
+        JsValue::NULL
+    })
+}
+
+#[wasm_bindgen]
+pub fn set_param(name: &str, value: f32) {
+    APP.with(|app| {
+        if let Some(ref mut app) = *app.borrow_mut() {
+            match name {
+                "dt" => app.sim_engine.params.dt = value,
+                "nutrient_spawn_rate" => app.sim_engine.params.nutrient_spawn_rate = value,
+                "waste_decay_ticks" => app.sim_engine.params.waste_decay_ticks = value,
+                "nutrient_recycle_rate" => app.sim_engine.params.nutrient_recycle_rate = value,
+                "movement_energy_cost" => app.sim_engine.params.movement_energy_cost = value,
+                "base_ambient_temp" => app.sim_engine.params.base_ambient_temp = value,
+                "metabolic_cost_base" => app.sim_engine.params.metabolic_cost_base = value,
+                "replication_energy_min" => app.sim_engine.params.replication_energy_min = value,
+                "energy_from_nutrient" => app.sim_engine.params.energy_from_nutrient = value,
+                "energy_from_source" => app.sim_engine.params.energy_from_source = value,
+                "diffusion_rate" => app.sim_engine.params.diffusion_rate = value,
+                "temp_sensitivity" => app.sim_engine.params.temp_sensitivity = value,
+                "predation_energy_fraction" => app.sim_engine.params.predation_energy_fraction = value,
+                "max_energy" => app.sim_engine.params.max_energy = value,
+                _ => {}
+            }
         }
     });
 }

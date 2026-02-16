@@ -2,12 +2,24 @@ pub mod gpu;
 pub mod timing;
 pub mod bridge;
 
+use std::cell::Cell;
+use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use renderer::camera::Camera;
 use renderer::Renderer;
+use renderer::VoxelPicker;
 use sim_core::SimEngine;
+use sim_core::SimStats;
 use timing::FrameTiming;
 use bridge::Tool;
+
+/// Async readback state machine: Idle -> CopyIssued -> MapRequested -> Ready
+#[derive(Clone, Copy, PartialEq)]
+pub enum ReadbackState {
+    Idle,
+    CopyIssued,
+    MapRequested,
+}
 
 pub struct App {
     pub gpu: gpu::GpuContext,
@@ -19,6 +31,16 @@ pub struct App {
     pub brush_radius: u32,
     pub pending_commands: Vec<types::Command>,
     pub overlay_mode: u32,
+    pub picker: VoxelPicker,
+    pub latest_stats: Option<SimStats>,
+    pub pick_requested: bool,
+    pub pick_coords: Option<(u32, u32, u32)>,
+    pub pick_state: ReadbackState,
+    pub pick_ready: Rc<Cell<bool>>,
+    pub latest_pick: Option<renderer::PickResult>,
+    pub stats_tick_counter: u32,
+    pub stats_state: ReadbackState,
+    pub stats_ready: Rc<Cell<bool>>,
 }
 
 #[wasm_bindgen]
@@ -62,6 +84,8 @@ pub async fn init() -> Result<(), JsValue> {
 
     let timing = FrameTiming::new();
 
+    let picker = VoxelPicker::new(&gpu.device);
+
     let app = App {
         gpu,
         sim_engine,
@@ -72,6 +96,16 @@ pub async fn init() -> Result<(), JsValue> {
         brush_radius: 0,
         pending_commands: Vec::new(),
         overlay_mode: 0,
+        picker,
+        latest_stats: None,
+        pick_requested: false,
+        pick_coords: None,
+        pick_state: ReadbackState::Idle,
+        pick_ready: Rc::new(Cell::new(false)),
+        latest_pick: None,
+        stats_tick_counter: 0,
+        stats_state: ReadbackState::Idle,
+        stats_ready: Rc::new(Cell::new(false)),
     };
 
     bridge::APP.with(|cell| {
@@ -127,6 +161,25 @@ pub fn frame(dt: f32) {
             app.sim_engine.tick(&mut encoder, &app.gpu.queue, cmds);
         }
 
+        // Handle pick request: copy voxel data to pick staging buffer
+        if app.pick_requested && app.pick_state == ReadbackState::Idle {
+            if let Some((x, y, z)) = app.pick_coords {
+                let gs = app.sim_engine.grid_size();
+                let idx = types::grid_index(x, y, z, gs);
+                app.picker.request_pick(
+                    &mut encoder,
+                    app.sim_engine.current_read_buffer(),
+                    idx as u32,
+                );
+                app.pick_state = ReadbackState::CopyIssued;
+            }
+        }
+
+        // Track stats readback cadence (every 10 ticks)
+        if ticks_to_run > 0 {
+            app.stats_tick_counter += ticks_to_run;
+        }
+
         // Update render texture from current read buffer
         app.renderer.update_render_texture(
             &mut encoder,
@@ -147,5 +200,68 @@ pub fn frame(dt: f32) {
 
         app.gpu.queue.submit(std::iter::once(encoder.finish()));
         surface_texture.present();
+
+        // --- Stats readback state machine ---
+        // Transition CopyIssued -> MapRequested (issue map_async once)
+        if app.stats_tick_counter >= 10 && app.stats_state == ReadbackState::Idle {
+            // Stats copy happens every tick via encoder (always copies to staging).
+            // We just need to request mapping.
+            app.stats_tick_counter = 0;
+            app.stats_ready.set(false);
+            let flag = app.stats_ready.clone();
+            app.sim_engine.stats_staging_buffer().slice(..).map_async(
+                wgpu::MapMode::Read,
+                move |result| {
+                    if result.is_ok() {
+                        flag.set(true);
+                    }
+                },
+            );
+            app.stats_state = ReadbackState::MapRequested;
+        }
+
+        // Transition MapRequested -> Idle (read data when ready)
+        if app.stats_state == ReadbackState::MapRequested && app.stats_ready.get() {
+            let slice = app.sim_engine.stats_staging_buffer().slice(..);
+            let data = slice.get_mapped_range();
+            let words: &[u32] = bytemuck::cast_slice(&data);
+            let mut arr = [0u32; 32];
+            let len = words.len().min(32);
+            arr[..len].copy_from_slice(&words[..len]);
+            drop(data);
+            app.sim_engine.stats_staging_buffer().unmap();
+            app.latest_stats = Some(SimStats::from_words(&arr));
+            app.stats_state = ReadbackState::Idle;
+        }
+
+        // --- Pick readback state machine ---
+        // Transition CopyIssued -> MapRequested
+        if app.pick_state == ReadbackState::CopyIssued {
+            app.pick_ready.set(false);
+            let flag = app.pick_ready.clone();
+            app.picker.staging_buffer().slice(..).map_async(
+                wgpu::MapMode::Read,
+                move |result| {
+                    if result.is_ok() {
+                        flag.set(true);
+                    }
+                },
+            );
+            app.pick_state = ReadbackState::MapRequested;
+        }
+
+        // Transition MapRequested -> Idle (read data when ready)
+        if app.pick_state == ReadbackState::MapRequested && app.pick_ready.get() {
+            let slice = app.picker.staging_buffer().slice(..);
+            let data = slice.get_mapped_range();
+            let bytes: Vec<u8> = data.to_vec();
+            drop(data);
+            app.picker.staging_buffer().unmap();
+            if let Some((x, y, z)) = app.pick_coords {
+                app.latest_pick = Some(VoxelPicker::parse_pick(&bytes, x, y, z));
+            }
+            app.pick_requested = false;
+            app.pick_state = ReadbackState::Idle;
+        }
     });
 }

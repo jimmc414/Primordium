@@ -11,6 +11,7 @@ types = { path = "../types" }
 sim-core = { path = "../sim-core" }
 renderer = { path = "../renderer" }
 glam = "0.32"
+bytemuck = { version = "1.25", features = ["derive"] }
 wgpu = { version = "27.0", default-features = false, features = ["webgpu", "wgsl"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"

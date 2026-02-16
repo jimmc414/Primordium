@@ -5,6 +5,7 @@ const INTENT_DECLARATION_WGSL: &str = include_str!("../../../shaders/intent_decl
 const RESOLVE_EXECUTE_WGSL: &str = include_str!("../../../shaders/resolve_execute.wgsl");
 const APPLY_COMMANDS_WGSL: &str = include_str!("../../../shaders/apply_commands.wgsl");
 const TEMPERATURE_DIFFUSION_WGSL: &str = include_str!("../../../shaders/temperature_diffusion.wgsl");
+const STATS_REDUCTION_WGSL: &str = include_str!("../../../shaders/stats_reduction.wgsl");
 
 pub struct SimPipelines {
     pub intent_declaration: wgpu::ComputePipeline,
@@ -15,6 +16,8 @@ pub struct SimPipelines {
     pub apply_commands_bgl: wgpu::BindGroupLayout,
     pub temperature_diffusion: wgpu::ComputePipeline,
     pub temperature_diffusion_bgl: wgpu::BindGroupLayout,
+    pub stats_reduction: wgpu::ComputePipeline,
+    pub stats_reduction_bgl: wgpu::BindGroupLayout,
 }
 
 impl SimPipelines {
@@ -315,6 +318,69 @@ impl SimPipelines {
                 cache: None,
             });
 
+        // ---- Stats reduction pipeline ----
+        let stats_source = format!("{}\n{}", COMMON_WGSL, STATS_REDUCTION_WGSL);
+        let stats_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("stats_reduction"),
+            source: wgpu::ShaderSource::Wgsl(stats_source.into()),
+        });
+
+        let stats_reduction_bgl =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("stats_reduction_bgl"),
+                entries: &[
+                    // binding 0: voxel buffer (read-only storage)
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // binding 1: stats buffer (read_write storage)
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // binding 2: sim params uniform
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+
+        let stats_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("stats_reduction_pl"),
+            bind_group_layouts: &[&stats_reduction_bgl],
+            push_constant_ranges: &[],
+        });
+
+        let stats_reduction =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("stats_reduction_pipeline"),
+                layout: Some(&stats_pl),
+                module: &stats_shader,
+                entry_point: Some("stats_reduction_main"),
+                compilation_options: Default::default(),
+                cache: None,
+            });
+
         Self {
             intent_declaration,
             intent_declaration_bgl,
@@ -324,6 +390,8 @@ impl SimPipelines {
             apply_commands_bgl,
             temperature_diffusion,
             temperature_diffusion_bgl,
+            stats_reduction,
+            stats_reduction_bgl,
         }
     }
 }

@@ -101,11 +101,23 @@ fn update_render_texture_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         }
     }
 
-    // Temperature overlay mode
-    if params.overlay_mode > 0.5 {
+    // Overlay modes: 1=Temperature, 2=Energy density, 3=Population density
+    let overlay = u32(params.overlay_mode);
+    if overlay == 1u {
+        // Temperature: blue (cold=0) to red (hot=1)
         let temp = temp_buf[idx];
-        // Blue (cold=0) to Red (hot=1) gradient
         color = vec4<f32>(temp, 0.2 * (1.0 - abs(temp * 2.0 - 1.0)), 1.0 - temp, max(temp, 1.0 - temp));
+    } else if overlay == 2u {
+        // Energy density: black (0) to bright green (max_energy)
+        let e = f32(energy) / params.max_energy;
+        color = vec4<f32>(0.0, e, e * 0.3, select(0.0, max(e, 0.2), vtype != 0u));
+    } else if overlay == 3u {
+        // Population density: highlight protocells, dim everything else
+        if vtype == 4u {
+            color = vec4<f32>(1.0, 1.0, 0.0, 1.0);
+        } else if vtype != 0u {
+            color = vec4<f32>(0.15, 0.15, 0.15, 0.3);
+        }
     }
 
     textureStore(render_tex, gid, color);

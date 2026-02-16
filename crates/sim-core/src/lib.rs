@@ -2,6 +2,9 @@ pub mod buffers;
 pub mod uniform;
 pub mod pipelines;
 pub mod tick;
+pub mod stats;
+
+pub use stats::SimStats;
 
 use buffers::VoxelBuffers;
 use uniform::ParamsUniform;
@@ -21,6 +24,8 @@ pub struct SimEngine {
     apply_cmd_bg_odd: wgpu::BindGroup,   // apply_commands: reads/writes buf_b
     temp_diffusion_bg_even: wgpu::BindGroup,  // reads temp_a, writes temp_b, reads voxel_a
     temp_diffusion_bg_odd: wgpu::BindGroup,   // reads temp_b, writes temp_a, reads voxel_b
+    stats_bg_even: wgpu::BindGroup,  // stats reads voxel_buf_b (write buffer on even ticks)
+    stats_bg_odd: wgpu::BindGroup,   // stats reads voxel_buf_a (write buffer on odd ticks)
     tick_count: u32,
 }
 
@@ -224,6 +229,47 @@ impl SimEngine {
             ],
         });
 
+        // Stats bind groups (3 entries each): voxel_write, stats_buf, params
+        // Even ticks: resolve writes B, so stats reads B
+        let stats_bg_even = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("stats_bg_even"),
+            layout: &pipelines.stats_reduction_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffers.buffer_b().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buffers.stats_buffer().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: params_uniform.buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        // Odd ticks: resolve writes A, so stats reads A
+        let stats_bg_odd = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("stats_bg_odd"),
+            layout: &pipelines.stats_reduction_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffers.buffer_a().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buffers.stats_buffer().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: params_uniform.buffer.as_entire_binding(),
+                },
+            ],
+        });
+
         Self {
             buffers,
             params_uniform,
@@ -237,6 +283,8 @@ impl SimEngine {
             apply_cmd_bg_odd,
             temp_diffusion_bg_even,
             temp_diffusion_bg_odd,
+            stats_bg_even,
+            stats_bg_odd,
             tick_count: 0,
         }
     }
@@ -401,5 +449,17 @@ impl SimEngine {
 
     pub fn current_temp_buffer(&self) -> &wgpu::Buffer {
         self.buffers.current_temp_read()
+    }
+
+    pub fn stats_staging_buffer(&self) -> &wgpu::Buffer {
+        self.buffers.stats_staging_buffer()
+    }
+
+    pub fn tick_count(&self) -> u32 {
+        self.tick_count
+    }
+
+    pub fn current_write_buffer(&self) -> &wgpu::Buffer {
+        self.buffers.current_write_buffer()
     }
 }

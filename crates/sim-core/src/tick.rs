@@ -95,6 +95,34 @@ impl SimEngine {
             pass.dispatch_workgroups(wg, wg, wg);
         }
 
+        // 6.5 Clear stats buffer and dispatch stats_reduction
+        encoder.clear_buffer(self.buffers.stats_buffer(), 0, None);
+
+        let stats_bg = if self.buffers.current_read_is_a() {
+            &self.stats_bg_even
+        } else {
+            &self.stats_bg_odd
+        };
+
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("stats_reduction_pass"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&self.pipelines.stats_reduction);
+            pass.set_bind_group(0, stats_bg, &[]);
+            let total_voxels = (self.buffers.grid_size() as u32).pow(3);
+            let workgroups = (total_voxels + 63) / 64;
+            pass.dispatch_workgroups(workgroups, 1, 1);
+        }
+
+        // Copy stats_buf to stats_staging for async readback
+        encoder.copy_buffer_to_buffer(
+            self.buffers.stats_buffer(), 0,
+            self.buffers.stats_staging_buffer(), 0,
+            128,
+        );
+
         // 7. Swap buffers (voxel + temp) + increment tick
         self.buffers.swap();
         self.tick_count += 1;

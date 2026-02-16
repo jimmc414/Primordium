@@ -2,11 +2,13 @@ pub mod camera;
 pub mod render_texture;
 pub mod ray_march;
 pub mod wireframe;
+pub mod picker;
 
 use camera::Camera;
 use render_texture::RenderTexturePipeline;
 use ray_march::RayMarchPipeline;
 use wireframe::WireframePipeline;
+pub use picker::{VoxelPicker, PickResult};
 
 pub struct Renderer {
     render_texture: RenderTexturePipeline,
