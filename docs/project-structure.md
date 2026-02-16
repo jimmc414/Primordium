@@ -30,7 +30,8 @@ voxel-ecosystem/
 │   │       ├── intent.rs              # Intent encoding/decoding
 │   │       ├── genome.rs              # Genome field accessors
 │   │       ├── params.rs              # SimParams struct (shared between crates)
-│   │       └── grid.rs               # Grid coordinate math, neighbor offsets
+│   │       ├── grid.rs               # Grid coordinate math, neighbor offsets
+│   │       └── commands.rs           # Player command struct, encode/decode
 │   ├── sim-core/                       # GPU simulation engine
 │   │   ├── Cargo.toml
 │   │   └── src/
@@ -38,9 +39,9 @@ voxel-ecosystem/
 │   │       ├── buffers.rs              # Buffer allocation and management
 │   │       ├── pipelines.rs            # Compute pipeline creation
 │   │       ├── tick.rs                 # Tick dispatch orchestration
-│   │       ├── commands.rs             # Player command serialization
 │   │       ├── stats.rs               # Stats readback pipeline
-│   │       └── uniform.rs             # SimParams → uniform buffer upload
+│   │       ├── uniform.rs             # SimParams → uniform buffer upload
+│   │       └── sparse.rs             # Brick pool allocator, spatial hash map (M9)
 │   ├── renderer/                       # GPU rendering
 │   │   ├── Cargo.toml
 │   │   └── src/
@@ -67,7 +68,8 @@ voxel-ecosystem/
 │   ├── intent_declaration.wgsl        # Protocell intent evaluation
 │   ├── resolve_execute.wgsl           # Conflict resolution + state update
 │   ├── stats_reduction.wgsl           # Parallel reduction for statistics
-│   └── pick_voxel.wgsl               # Ray cast for voxel inspector
+│   ├── pick_voxel.wgsl               # Ray cast for voxel inspector
+│   └── brick_common.wgsl             # Brick coordinate math, hash map lookup (M9 sparse)
 └── web/
     ├── index.html                      # Entry page, canvas, WASM loader
     ├── style.css                       # UI styling
@@ -300,6 +302,8 @@ common.wgsl
  ├── stats_reduction.wgsl
  └── pick_voxel.wgsl
 
+common.wgsl + brick_common.wgsl  (sparse-mode pipeline variants)
+
 ray_march.wgsl       (standalone — reads 3D texture, no voxel struct)
 wireframe.wgsl        (standalone — just geometry)
 ```
@@ -447,7 +451,7 @@ wireframe.wgsl        (standalone — just geometry)
 
 | File | Notes |
 |------|-------|
-| `crates/sim-core/src/commands.rs` | Command struct definition. `command_buf` write helper. |
+| `crates/types/src/commands.rs` | Command struct definition, encode/decode. (Data type, lives in types crate.) |
 | `shaders/apply_commands.wgsl` | Processes command buffer, modifies voxel read buffer in-place. |
 | `web/ui.js` | Tool palette, brush radius slider. Minimal — no stats, no parameter controls yet. |
 

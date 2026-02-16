@@ -20,11 +20,11 @@ python3 -m http.server 8080
 ## Project Layout
 
 ```
-crates/types/       Pure Rust data types. No GPU deps. Voxel, Genome, Intent, SimParams, grid math.
-crates/sim-core/    GPU simulation engine. Depends on types + wgpu.
+crates/types/       Pure Rust data types. No GPU deps. Voxel, Genome, Intent, Command, SimParams, grid math.
+crates/sim-core/    GPU simulation engine. Depends on types + wgpu. Includes sparse.rs for brick-based 256³.
 crates/renderer/    GPU rendering. Depends on types + wgpu.
 crates/host/        WASM entry point. Depends on all above + wasm-bindgen.
-shaders/            WGSL shader files. common.wgsl is prepended to all others.
+shaders/            WGSL shader files. common.wgsl is prepended to all others; brick_common.wgsl for sparse mode.
 web/                HTML/CSS/JS. Thin UI layer.
 docs/               Spec documents. Read before coding.
 ```
@@ -79,6 +79,16 @@ Words 2-5: genome (16 bytes, 4 × u32)
 Words 6-7: extra (type-specific state)
 ```
 
+### SimParams Fields (20 × f32 = 80 bytes)
+
+```
+grid_size  tick_count  dt  nutrient_spawn_rate
+waste_decay_ticks  nutrient_recycle_rate  movement_energy_cost  base_ambient_temp
+metabolic_cost_base  replication_energy_min  energy_from_nutrient  energy_from_source
+diffusion_rate  temp_sensitivity  predation_energy_fraction  max_energy
+overlay_mode  sparse_mode  brick_grid_dim  max_bricks
+```
+
 ### Voxel Types
 
 ```
@@ -121,7 +131,10 @@ DIE > PREDATE > REPLICATE > MOVE > IDLE
 5. stats_reduction        — reads voxel_write, writes stats_buf
 ```
 
-### Buffer Inventory (128³)
+In sparse mode, all dispatches use brick_table indirection via `brick_common.wgsl`.
+Dispatches iterate over allocated bricks only, not the full 256³ grid.
+
+### Buffer Inventory (128³ Dense)
 
 ```
 voxel_buf_a:   64 MB    voxel_buf_b:   64 MB
@@ -129,6 +142,16 @@ temp_buf_a:     8 MB    temp_buf_b:     8 MB
 intent_buf:     8 MB    render_tex:     8 MB
 sim_params:   256 B     stats_buf:    128 B
 command_buf:    4 KB    TOTAL:       ~152 MB (budget: 160 MB)
+```
+
+### Buffer Inventory (256³ Sparse)
+
+```
+brick_table:  128 KB    pool_a:     variable (max_bricks × 512 × 32 B)
+pool_b:      variable   temp_pool_a: variable (max_bricks × 512 × 4 B)
+temp_pool_b: variable   intent_pool: variable (max_bricks × 512 × 4 B)
+render_tex:    64 MB    sim_params:  256 B
+stats_buf:    128 B     command_buf:   4 KB
 ```
 
 ### Double Buffer Swap
@@ -150,9 +173,10 @@ This is correct — sequential dispatches in same command encoder are ordered.
 ## Grid Tiers
 
 ```
-Discrete GPU ≥ 256MB VRAM: 128³
-Discrete GPU < 256MB:       96³
-Integrated GPU:              64³
+Discrete GPU ≥ 256MB VRAM (sparse): 256³  (brick-based, 8³ bricks)
+Discrete GPU ≥ 256MB VRAM (dense):  128³
+Discrete GPU < 256MB:                96³
+Integrated GPU:                      64³
 ```
 
 ## Shader Conventions
@@ -162,6 +186,7 @@ Integrated GPU:              64³
 - Bind group layout documented in comment header of each shader — this is authoritative
 - `common.wgsl` is concatenated before every shader at pipeline creation via `include_str!()`
 - `common.wgsl` has NO entry points — only types, constants, and helper functions
+- `brick_common.wgsl` is additionally concatenated for sparse-mode pipeline variants
 
 ## Dependency Versions
 

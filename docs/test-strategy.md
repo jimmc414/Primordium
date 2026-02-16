@@ -229,7 +229,7 @@ The regression suite is the set of Tier 1 + Tier 2 tests that must pass before a
 
 | Milestone | New Tests Added | Cumulative Test Count (approx) |
 |-----------|-----------------|-------------------------------|
-| M1 | types roundtrips, grid math, params | ~20 |
+| M1 | types roundtrips, grid math, params | 26 |
 | M2 | metabolism, death, waste decay, determinism | ~30 |
 | M3 | replication, mutation, conflict, intent roundtrip, determinism 200-tick | ~42 |
 | M4 | movement, chemotaxis, commands, toxin | ~50 |
