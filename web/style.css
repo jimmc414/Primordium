@@ -216,3 +216,146 @@ html, body {
     color: #fff;
     border-color: #4af;
 }
+
+/* Loading screen */
+#loading-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #0a0a0a;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.4s ease-out;
+}
+
+#loading-screen.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.loading-content {
+    text-align: center;
+    color: #ccc;
+    font-family: monospace;
+}
+
+.loading-content h1 {
+    font-size: 36px;
+    color: #4af;
+    margin-bottom: 16px;
+}
+
+.loading-content p {
+    font-size: 14px;
+    margin-bottom: 24px;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    margin: 0 auto;
+    border: 3px solid #333;
+    border-top-color: #4af;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Shortcut overlay */
+#shortcut-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 500;
+    align-items: center;
+    justify-content: center;
+}
+
+#shortcut-overlay.visible {
+    display: flex;
+}
+
+.shortcut-panel {
+    background: rgba(15, 15, 15, 0.95);
+    border: 1px solid #4af;
+    border-radius: 8px;
+    padding: 24px 32px;
+    color: #ccc;
+    font-family: monospace;
+    font-size: 13px;
+    max-width: 520px;
+}
+
+.shortcut-panel h2 {
+    color: #4af;
+    font-size: 18px;
+    margin-bottom: 12px;
+}
+
+.shortcut-panel h3 {
+    color: #4af;
+    font-size: 14px;
+    margin-top: 16px;
+    margin-bottom: 8px;
+}
+
+.shortcut-panel table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.shortcut-panel td {
+    padding: 3px 8px;
+    vertical-align: top;
+}
+
+.shortcut-panel td:first-child {
+    white-space: nowrap;
+    color: #fff;
+    width: 120px;
+}
+
+.shortcut-panel kbd {
+    background: #333;
+    border: 1px solid #555;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 12px;
+    color: #fff;
+}
+
+.shortcut-panel .dismiss {
+    text-align: center;
+    color: #666;
+    margin-top: 16px;
+    font-size: 11px;
+}
+
+/* Preset buttons */
+.preset-btn {
+    background: rgba(30, 60, 30, 0.85);
+    color: #ccc;
+    border: 1px solid #484;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: monospace;
+    font-size: 11px;
+    cursor: pointer;
+    margin: 1px;
+}
+
+.preset-btn:hover {
+    background: rgba(40, 100, 40, 0.9);
+    color: #fff;
+}

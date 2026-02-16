@@ -207,6 +207,46 @@ pub fn get_stats() -> JsValue {
 }
 
 #[wasm_bindgen]
+pub fn load_preset(preset_id: u32) {
+    APP.with(|app| {
+        if let Some(ref mut app) = *app.borrow_mut() {
+            app.sim_engine.reset_tick_count();
+            app.sim_engine.initialize_grid_with_preset(&app.gpu.queue, preset_id);
+            app.latest_stats = None;
+            app.stats_tick_counter = 0;
+            app.stats_state = crate::ReadbackState::Idle;
+        }
+    });
+}
+
+#[wasm_bindgen]
+pub fn run_benchmark() -> u32 {
+    APP.with(|app| {
+        if let Some(ref mut app) = *app.borrow_mut() {
+            let count = app.sim_engine.seed_benchmark(&app.gpu.queue);
+            app.latest_stats = None;
+            app.stats_tick_counter = 0;
+            app.stats_state = crate::ReadbackState::Idle;
+            count
+        } else {
+            0
+        }
+    })
+}
+
+#[wasm_bindgen]
+pub fn get_grid_size() -> u32 {
+    APP.with(|app| {
+        let borrow = app.borrow();
+        if let Some(ref app) = *borrow {
+            app.sim_engine.grid_size()
+        } else {
+            0
+        }
+    })
+}
+
+#[wasm_bindgen]
 pub fn set_param(name: &str, value: f32) {
     APP.with(|app| {
         if let Some(ref mut app) = *app.borrow_mut() {

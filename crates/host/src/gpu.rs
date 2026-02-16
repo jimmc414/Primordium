@@ -1,11 +1,30 @@
 use wgpu;
 use web_sys::HtmlCanvasElement;
 
+#[derive(Debug, Clone, Copy)]
+pub enum GpuTier {
+    High,   // 128³ — discrete GPU with sufficient buffer limits
+    Medium, // 96³  — discrete GPU with smaller limits
+    Low,    // 64³  — integrated GPU
+}
+
+impl GpuTier {
+    pub fn grid_size(self) -> u32 {
+        match self {
+            GpuTier::High => 128,
+            GpuTier::Medium => 96,
+            GpuTier::Low => 64,
+        }
+    }
+}
+
 pub struct GpuContext {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub surface: wgpu::Surface<'static>,
     pub surface_config: wgpu::SurfaceConfiguration,
+    pub tier: GpuTier,
+    pub grid_size: u32,
 }
 
 pub async fn init_gpu(canvas: HtmlCanvasElement) -> Result<GpuContext, String> {
@@ -49,6 +68,13 @@ pub async fn init_gpu(canvas: HtmlCanvasElement) -> Result<GpuContext, String> {
         .into(),
     );
 
+    // Detect GPU tier based on adapter type and buffer limits
+    let tier = detect_gpu_tier(&info, &limits);
+    let grid_size = tier.grid_size();
+    web_sys::console::log_1(
+        &format!("GPU tier: {:?}, grid size: {}³", tier, grid_size).into(),
+    );
+
     let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor {
             label: Some("primordium_device"),
@@ -90,5 +116,31 @@ pub async fn init_gpu(canvas: HtmlCanvasElement) -> Result<GpuContext, String> {
         queue,
         surface,
         surface_config,
+        tier,
+        grid_size,
     })
+}
+
+fn detect_gpu_tier(info: &wgpu::AdapterInfo, limits: &wgpu::Limits) -> GpuTier {
+    if info.device_type == wgpu::DeviceType::IntegratedGpu {
+        return GpuTier::Low;
+    }
+
+    // 128³ voxel buffer = 128³ * 8 u32 * 4 bytes = 67,108,864 bytes
+    let buf_128 = 128u64 * 128 * 128 * 8 * 4;
+    if limits.max_buffer_size >= buf_128
+        && (limits.max_storage_buffer_binding_size as u64) >= buf_128
+    {
+        return GpuTier::High;
+    }
+
+    // 96³ voxel buffer = 96³ * 8 * 4 = 28,311,552 bytes
+    let buf_96 = 96u64 * 96 * 96 * 8 * 4;
+    if limits.max_buffer_size >= buf_96
+        && (limits.max_storage_buffer_binding_size as u64) >= buf_96
+    {
+        return GpuTier::Medium;
+    }
+
+    GpuTier::Low
 }

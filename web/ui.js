@@ -114,6 +114,30 @@ function createToolbar() {
     tickDiv.appendChild(pauseBtn);
     tickDiv.appendChild(stepBtn);
     toolbar.appendChild(tickDiv);
+
+    // ---- 8h. Preset buttons ----
+    const presetDiv = document.createElement('div');
+    presetDiv.style.marginTop = '8px';
+    const presetLabel = document.createElement('label');
+    presetLabel.className = 'brush-label';
+    presetLabel.textContent = 'Presets';
+    presetDiv.appendChild(presetLabel);
+
+    const presets = [
+        { id: 0, name: 'Petri Dish' },
+        { id: 1, name: 'Gradient' },
+        { id: 2, name: 'Arena' },
+    ];
+    presets.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'preset-btn';
+        btn.textContent = p.name;
+        btn.addEventListener('click', () => {
+            if (window._bridge) window._bridge.load_preset(p.id);
+        });
+        presetDiv.appendChild(btn);
+    });
+    toolbar.appendChild(presetDiv);
 }
 
 function selectTool(id) {
@@ -153,7 +177,9 @@ function updateStats(stats) {
         ? Math.round(stats.total_energy / stats.population)
         : 0;
 
+    const gs = window._gridSize || '?';
     panel.innerHTML =
+        `<span class="stat-label">Grid</span><span class="stat-value">${gs}³</span><br>` +
         `<span class="stat-label">Population</span><span class="stat-value">${stats.population}</span><br>` +
         `<span class="stat-label">Species</span><span class="stat-value">${stats.species_count}</span><br>` +
         `<span class="stat-label">Avg Energy</span><span class="stat-value">${avgEnergy}</span><br>` +
@@ -386,10 +412,19 @@ window.addEventListener('mousedown', (e) => {
 
 window.addEventListener('keydown', (e) => {
     const keyMap = { '1': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8 };
-    if (keyMap[e.key] !== undefined) {
+    if (e.key === '?') {
+        const overlay = document.getElementById('shortcut-overlay');
+        if (overlay) overlay.classList.toggle('visible');
+    } else if (keyMap[e.key] !== undefined) {
         activeTool = keyMap[e.key];
         updateButtons();
     } else if (e.key === 'Escape') {
+        // Close shortcut overlay if open
+        const overlay = document.getElementById('shortcut-overlay');
+        if (overlay && overlay.classList.contains('visible')) {
+            overlay.classList.remove('visible');
+            return;
+        }
         activeTool = 0;
         updateButtons();
         hideInspector();

@@ -6,6 +6,37 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <div id="loading-screen">
+        <div class="loading-content">
+            <h1>Primordium</h1>
+            <p>Initializing WebGPU...</p>
+            <div class="loading-spinner"></div>
+        </div>
+    </div>
+    <div id="shortcut-overlay">
+        <div class="shortcut-panel">
+            <h2>Keyboard Shortcuts</h2>
+            <table>
+                <tr><td><kbd>1</kbd>-<kbd>8</kbd></td><td>Select tool (Wall, Energy, Nutrient, Seed, Toxin, Remove, Heat, Cold)</td></tr>
+                <tr><td><kbd>Esc</kbd></td><td>Deselect tool / close overlay</td></tr>
+                <tr><td><kbd>P</kbd></td><td>Pause / Resume</td></tr>
+                <tr><td><kbd>N</kbd></td><td>Single step (while paused)</td></tr>
+                <tr><td><kbd>T</kbd></td><td>Cycle overlay (Normal / Temp / Energy / Pop)</td></tr>
+                <tr><td><kbd>C</kbd></td><td>Cycle clip axis (X / Y / Z / Off)</td></tr>
+                <tr><td><kbd>&#x2191;</kbd> <kbd>&#x2193;</kbd></td><td>Adjust clip plane position</td></tr>
+                <tr><td><kbd>?</kbd></td><td>Toggle this help overlay</td></tr>
+            </table>
+            <h3>Mouse Controls</h3>
+            <table>
+                <tr><td>Left click</td><td>Use selected tool</td></tr>
+                <tr><td>Shift + click</td><td>Inspect voxel</td></tr>
+                <tr><td>Right drag</td><td>Orbit camera</td></tr>
+                <tr><td>Middle drag</td><td>Pan camera</td></tr>
+                <tr><td>Scroll</td><td>Zoom</td></tr>
+            </table>
+            <p class="dismiss">Press <kbd>?</kbd> or <kbd>Esc</kbd> to close</p>
+        </div>
+    </div>
     <div id="toolbar"></div>
     <canvas id="gpu-canvas"></canvas>
     <div id="error-msg"></div>

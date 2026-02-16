@@ -67,12 +67,39 @@ pub async fn init() -> Result<(), JsValue> {
     // Initialize GPU
     let gpu = gpu::init_gpu(canvas).await.map_err(|e| JsValue::from_str(&e))?;
 
-    // Determine grid size based on adapter limits
-    let grid_size = 128u32;
-    web_sys::console::log_1(&format!("Grid size: {grid_size}\u{00b3}").into());
+    // Try grid sizes from detected tier downward
+    let tiers = [128u32, 96, 64];
+    let start_idx = match gpu.grid_size {
+        128 => 0,
+        96 => 1,
+        _ => 2,
+    };
 
-    // Create sim engine and seed test voxels
-    let sim_engine = SimEngine::new(&gpu.device, &gpu.queue, grid_size);
+    let mut grid_size = 0u32;
+    let mut sim_engine = None;
+
+    for &tier_size in &tiers[start_idx..] {
+        web_sys::console::log_1(&format!("Trying grid {}³...", tier_size).into());
+        match SimEngine::try_new(&gpu.device, &gpu.queue, tier_size) {
+            Ok(engine) => {
+                grid_size = tier_size;
+                sim_engine = Some(engine);
+                web_sys::console::log_1(
+                    &format!("Grid size: {grid_size}\u{00b3}").into(),
+                );
+                break;
+            }
+            Err(e) => {
+                web_sys::console::warn_1(
+                    &format!("Grid {}³ failed: {}. Trying smaller...", tier_size, e).into(),
+                );
+            }
+        }
+    }
+
+    let sim_engine = sim_engine.ok_or_else(|| {
+        JsValue::from_str("Failed to allocate GPU buffers. GPU may lack sufficient memory.")
+    })?;
     sim_engine.initialize_grid(&gpu.queue);
 
     // Create renderer

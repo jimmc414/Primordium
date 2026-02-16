@@ -22,9 +22,21 @@ pub struct VoxelBuffers {
 }
 
 impl VoxelBuffers {
-    pub fn new(device: &wgpu::Device, grid_size: u32) -> Self {
+    pub fn try_new(device: &wgpu::Device, grid_size: u32) -> Result<Self, String> {
         let total_voxels = (grid_size as u64).pow(3);
-        let buf_size = total_voxels * (VOXEL_STRIDE as u64) * 4; // 4 bytes per u32
+        let buf_size = total_voxels * (VOXEL_STRIDE as u64) * 4;
+
+        let limits = device.limits();
+        if buf_size > limits.max_buffer_size
+            || buf_size > limits.max_storage_buffer_binding_size as u64
+        {
+            return Err(format!(
+                "Grid {}³ requires {} MB per voxel buffer, device max: {} MB",
+                grid_size,
+                buf_size / (1024 * 1024),
+                limits.max_buffer_size / (1024 * 1024),
+            ));
+        }
 
         let voxel_buf_a = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("voxel_buf_a"),
@@ -89,7 +101,7 @@ impl VoxelBuffers {
             mapped_at_creation: false,
         });
 
-        Self {
+        Ok(Self {
             voxel_buf_a,
             voxel_buf_b,
             temp_buf_a,
@@ -100,7 +112,11 @@ impl VoxelBuffers {
             stats_staging,
             grid_size,
             current_read_is_a: true,
-        }
+        })
+    }
+
+    pub fn new(device: &wgpu::Device, grid_size: u32) -> Self {
+        Self::try_new(device, grid_size).expect("Failed to allocate voxel buffers")
     }
 
     pub fn buffer_a(&self) -> &wgpu::Buffer {
@@ -133,6 +149,10 @@ impl VoxelBuffers {
 
     pub fn current_read_is_a(&self) -> bool {
         self.current_read_is_a
+    }
+
+    pub fn reset_read_is_a(&mut self) {
+        self.current_read_is_a = true;
     }
 
     pub fn grid_size(&self) -> u32 {
