@@ -17,6 +17,7 @@ pub struct Renderer {
     camera_buffer: wgpu::Buffer,
     wireframe_uniform_buffer: wgpu::Buffer,
     grid_size: u32,
+    is_sparse: bool,
 }
 
 impl Renderer {
@@ -26,7 +27,30 @@ impl Renderer {
         surface_config: &wgpu::SurfaceConfiguration,
         grid_size: u32,
     ) -> Self {
-        let render_texture = RenderTexturePipeline::new(device, grid_size);
+        Self::new_inner(device, _queue, surface_config, grid_size, false)
+    }
+
+    pub fn new_sparse(
+        device: &wgpu::Device,
+        _queue: &wgpu::Queue,
+        surface_config: &wgpu::SurfaceConfiguration,
+        grid_size: u32,
+    ) -> Self {
+        Self::new_inner(device, _queue, surface_config, grid_size, true)
+    }
+
+    fn new_inner(
+        device: &wgpu::Device,
+        _queue: &wgpu::Queue,
+        surface_config: &wgpu::SurfaceConfiguration,
+        grid_size: u32,
+        sparse: bool,
+    ) -> Self {
+        let render_texture = if sparse {
+            RenderTexturePipeline::new_sparse(device, grid_size)
+        } else {
+            RenderTexturePipeline::new(device, grid_size)
+        };
         let ray_march = RayMarchPipeline::new(device, surface_config.format);
         let wireframe = WireframePipeline::new(device, surface_config.format);
 
@@ -52,6 +76,7 @@ impl Renderer {
             camera_buffer,
             wireframe_uniform_buffer,
             grid_size,
+            is_sparse: sparse,
         }
     }
 
@@ -66,8 +91,14 @@ impl Renderer {
         voxel_buf: &wgpu::Buffer,
         params_buf: &wgpu::Buffer,
         temp_buf: &wgpu::Buffer,
+        brick_table_buf: Option<&wgpu::Buffer>,
     ) {
-        let bg = self.render_texture.create_bind_group(device, voxel_buf, params_buf, temp_buf);
+        let bg = if self.is_sparse {
+            let bt = brick_table_buf.expect("sparse mode requires brick_table_buf");
+            self.render_texture.create_sparse_bind_group(device, voxel_buf, params_buf, temp_buf, bt)
+        } else {
+            self.render_texture.create_bind_group(device, voxel_buf, params_buf, temp_buf)
+        };
         self.render_texture.encode(encoder, &bg);
     }
 

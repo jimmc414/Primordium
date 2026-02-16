@@ -28,9 +28,9 @@ struct SimParams {
     predation_energy_fraction: f32,
     max_energy: f32,
     overlay_mode: f32,
-    _pad17: f32,
-    _pad18: f32,
-    _pad19: f32,
+    sparse_mode: f32,
+    brick_grid_dim: f32,
+    max_bricks: f32,
 };
 
 @group(0) @binding(0) var<storage, read> voxel_read: array<u32>;
@@ -45,7 +45,14 @@ fn intent_declaration_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
 
-    let idx = grid_index(gid, gs);
+    let logical_idx = grid_index(gid, gs);
+    var idx: u32;
+    if params.sparse_mode > 0.0 {
+        idx = sparse_voxel_index(gid, gs);
+        if idx == 0xFFFFFFFFu { return; }
+    } else {
+        idx = logical_idx;
+    }
     let vtype = voxel_get_type(&voxel_read, idx);
 
     // Non-protocells: write NO_ACTION and return
@@ -56,7 +63,8 @@ fn intent_declaration_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     // ---- Protocell intent declaration ----
     // PRNG with dispatch salt 0x1 for intent pass
-    var rng = prng_seed(idx, u32(params.tick_count), gs, 0x1u);
+    // Use logical index for PRNG, not pool index, to preserve determinism
+    var rng = prng_seed(logical_idx, u32(params.tick_count), gs, 0x1u);
 
     let energy = voxel_get_energy(&voxel_read, idx);
 
@@ -86,7 +94,12 @@ fn intent_declaration_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var prey_dirs: array<u32, 6>;
 
     for (var d: u32 = 0u; d < 6u; d++) {
-        let ni = neighbor_in_direction(gid, d, gs);
+        var ni: u32;
+        if params.sparse_mode > 0.0 {
+            ni = sparse_neighbor(gid, d, gs);
+        } else {
+            ni = neighbor_in_direction(gid, d, gs);
+        }
         if ni == 0xFFFFFFFFu {
             continue;
         }

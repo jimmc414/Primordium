@@ -3,18 +3,24 @@ use web_sys::HtmlCanvasElement;
 
 #[derive(Debug, Clone, Copy)]
 pub enum GpuTier {
-    High,   // 128³ — discrete GPU with sufficient buffer limits
-    Medium, // 96³  — discrete GPU with smaller limits
-    Low,    // 64³  — integrated GPU
+    Sparse256, // 256³ sparse — discrete GPU with ≥ 50 MB buffer limits
+    High,      // 128³ dense  — discrete GPU with sufficient buffer limits
+    Medium,    // 96³  dense  — discrete GPU with smaller limits
+    Low,       // 64³  dense  — integrated GPU
 }
 
 impl GpuTier {
     pub fn grid_size(self) -> u32 {
         match self {
+            GpuTier::Sparse256 => 256,
             GpuTier::High => 128,
             GpuTier::Medium => 96,
             GpuTier::Low => 64,
         }
+    }
+
+    pub fn is_sparse(self) -> bool {
+        matches!(self, GpuTier::Sparse256)
     }
 }
 
@@ -124,6 +130,14 @@ pub async fn init_gpu(canvas: HtmlCanvasElement) -> Result<GpuContext, String> {
 fn detect_gpu_tier(info: &wgpu::AdapterInfo, limits: &wgpu::Limits) -> GpuTier {
     if info.device_type == wgpu::DeviceType::IntegratedGpu {
         return GpuTier::Low;
+    }
+
+    // Sparse 256³ needs ~50 MB per pool buffer (at ~3200 max bricks)
+    let sparse_pool = 50u64 * 1024 * 1024; // 50 MB
+    if limits.max_buffer_size >= sparse_pool
+        && (limits.max_storage_buffer_binding_size as u64) >= sparse_pool
+    {
+        return GpuTier::Sparse256;
     }
 
     // 128³ voxel buffer = 128³ * 8 u32 * 4 bytes = 67,108,864 bytes

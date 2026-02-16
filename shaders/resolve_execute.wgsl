@@ -70,9 +70,9 @@ struct SimParams {
     predation_energy_fraction: f32,
     max_energy: f32,
     overlay_mode: f32,
-    _pad17: f32,
-    _pad18: f32,
-    _pad19: f32,
+    sparse_mode: f32,
+    brick_grid_dim: f32,
+    max_bricks: f32,
 };
 
 @group(0) @binding(0) var<storage, read> voxel_read: array<u32>;
@@ -119,19 +119,35 @@ fn write_empty(idx: u32) {
     write_voxel(idx, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u);
 }
 
+// Get 3D position of a neighbor in direction d from pos.
+fn neighbor_pos(pos: vec3<u32>, d: u32) -> vec3<u32> {
+    return vec3<u32>(vec3<i32>(pos) + NEIGHBORS[d]);
+}
+
+// Get buffer index for a neighbor, sparse-aware.
+fn get_neighbor(pos: vec3<u32>, d: u32, gs: u32) -> u32 {
+    if params.sparse_mode > 0.0 {
+        return sparse_neighbor(pos, d, gs);
+    } else {
+        return neighbor_in_direction(pos, d, gs);
+    }
+}
+
 // ---- Contender winner resolution ----
 // Reads 6 neighbors of target_pos. For each: check if intent action is REPLICATE
 // or MOVE and direction points toward target_pos (using opposite_direction).
-// Returns vec3(winner_voxel_index, winner_bid, winner_action).
-// If no winner, returns (0xFFFFFFFF, 0, 0).
+// Returns vec4(winner_voxel_index, winner_bid, winner_action, winner_direction).
+// If no winner, returns (0xFFFFFFFF, 0, 0, 0).
+// winner_direction = the direction from target_pos to the winner.
 
-fn find_contender_winner(target_pos: vec3<u32>, gs: u32) -> vec3<u32> {
+fn find_contender_winner(target_pos: vec3<u32>, gs: u32) -> vec4<u32> {
     var best_idx: u32 = 0xFFFFFFFFu;
     var best_bid: u32 = 0u;
     var best_action: u32 = 0u;
+    var best_dir: u32 = 0u;
 
     for (var d: u32 = 0u; d < 6u; d++) {
-        let ni = neighbor_in_direction(target_pos, d, gs);
+        let ni = get_neighbor(target_pos, d, gs);
         if ni == 0xFFFFFFFFu {
             continue;
         }
@@ -153,10 +169,11 @@ fn find_contender_winner(target_pos: vec3<u32>, gs: u32) -> vec3<u32> {
             best_bid = bid;
             best_idx = ni;
             best_action = action;
+            best_dir = d;
         }
     }
 
-    return vec3<u32>(best_idx, best_bid, best_action);
+    return vec4<u32>(best_idx, best_bid, best_action, best_dir);
 }
 
 // ---- Predation winner resolution ----
@@ -169,7 +186,12 @@ fn find_predation_winner(target_pos: vec3<u32>, gs: u32) -> vec2<u32> {
     var best_bid: u32 = 0u;
 
     for (var d: u32 = 0u; d < 6u; d++) {
-        let ni = neighbor_in_direction(target_pos, d, gs);
+        var ni: u32;
+        if params.sparse_mode > 0.0 {
+            ni = sparse_neighbor(target_pos, d, gs);
+        } else {
+            ni = neighbor_in_direction(target_pos, d, gs);
+        }
         if ni == 0xFFFFFFFFu {
             continue;
         }
@@ -225,11 +247,19 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
 
-    let idx = grid_index(gid, gs);
+    let logical_idx = grid_index(gid, gs);
+    var idx: u32;
+    if params.sparse_mode > 0.0 {
+        idx = sparse_voxel_index(gid, gs);
+        if idx == 0xFFFFFFFFu { return; }
+    } else {
+        idx = logical_idx;
+    }
     let vtype = voxel_get_type(&voxel_read, idx);
 
     // Initialize PRNG with dispatch salt 0x2
-    var rng = prng_seed(idx, u32(params.tick_count), gs, 0x2u);
+    // Use logical index for PRNG, not pool index, to preserve determinism
+    var rng = prng_seed(logical_idx, u32(params.tick_count), gs, 0x2u);
 
     switch vtype {
         case 0u: { // EMPTY — cases E1, E2, E3, E4
@@ -284,7 +314,7 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                     g0, g1, g2, g3, 0u, 0u);
             } else {
                 // E3/E4 (MOVE winner): Check if mover is being predated
-                let mover_pos = grid_coords(winner_idx, gs);
+                let mover_pos = neighbor_pos(gid, winner.w);
                 let pred_check = find_predation_winner(mover_pos, gs);
                 if pred_check.x != 0xFFFFFFFFu {
                     // Mover is being predated — don't copy, stay EMPTY
@@ -307,7 +337,7 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 // Metabolism at destination: scan OWN neighbors for energy gain
                 var gain: u32 = 0u;
                 for (var d: u32 = 0u; d < 6u; d++) {
-                    let ni = neighbor_in_direction(gid, d, gs);
+                    let ni = get_neighbor(gid, d, gs);
                     if ni == 0xFFFFFFFFu {
                         continue;
                     }
@@ -399,10 +429,10 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
             if my_action == ACTION_PREDATE {
                 let my_dir = intent_get_direction(my_intent);
-                let target_ni = neighbor_in_direction(gid, my_dir, gs);
+                let target_ni = get_neighbor(gid, my_dir, gs);
 
                 if target_ni != 0xFFFFFFFFu {
-                    let target_pos = grid_coords(target_ni, gs);
+                    let target_pos = neighbor_pos(gid, my_dir);
                     let pred_win = find_predation_winner(target_pos, gs);
 
                     if pred_win.x == idx {
@@ -416,10 +446,10 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             } else if my_action == ACTION_REPLICATE {
                 // Compute target position
                 let my_dir = intent_get_direction(my_intent);
-                let target_ni = neighbor_in_direction(gid, my_dir, gs);
+                let target_ni = get_neighbor(gid, my_dir, gs);
 
                 if target_ni != 0xFFFFFFFFu {
-                    let target_pos = grid_coords(target_ni, gs);
+                    let target_pos = neighbor_pos(gid, my_dir);
                     let winner = find_contender_winner(target_pos, gs);
 
                     if winner.x == idx {
@@ -431,10 +461,10 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 }
             } else if my_action == ACTION_MOVE {
                 let my_dir = intent_get_direction(my_intent);
-                let target_ni = neighbor_in_direction(gid, my_dir, gs);
+                let target_ni = get_neighbor(gid, my_dir, gs);
 
                 if target_ni != 0xFFFFFFFFu {
-                    let target_pos = grid_coords(target_ni, gs);
+                    let target_pos = neighbor_pos(gid, my_dir);
                     let winner = find_contender_winner(target_pos, gs);
 
                     if winner.x == idx {
@@ -455,7 +485,7 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             // Metabolism: scan neighbors for energy gain
             var gain: u32 = 0u;
             for (var d: u32 = 0u; d < 6u; d++) {
-                let ni = neighbor_in_direction(gid, d, gs);
+                let ni = get_neighbor(gid, d, gs);
                 if ni == 0xFFFFFFFFu {
                     continue;
                 }
@@ -500,7 +530,7 @@ fn resolve_execute_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
             var adj_protocells: u32 = 0u;
             for (var d: u32 = 0u; d < 6u; d++) {
-                let ni = neighbor_in_direction(gid, d, gs);
+                let ni = get_neighbor(gid, d, gs);
                 if ni == 0xFFFFFFFFu {
                     continue;
                 }

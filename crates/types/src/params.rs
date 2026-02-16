@@ -19,9 +19,9 @@ pub struct SimParams {
     pub predation_energy_fraction: f32,
     pub max_energy: f32,
     pub overlay_mode: f32,   // 0.0=normal, 1.0=temperature
-    pub _pad17: f32,
-    pub _pad18: f32,
-    pub _pad19: f32,
+    pub sparse_mode: f32,    // 0.0=dense, 1.0=sparse brick mode
+    pub brick_grid_dim: f32, // 32.0 for 256³ with 8³ bricks
+    pub max_bricks: f32,     // pool capacity as f32
 }
 
 impl Default for SimParams {
@@ -44,9 +44,9 @@ impl Default for SimParams {
             predation_energy_fraction: 0.5,
             max_energy: 1000.0,
             overlay_mode: 0.0,
-            _pad17: 0.0,
-            _pad18: 0.0,
-            _pad19: 0.0,
+            sparse_mode: 0.0,
+            brick_grid_dim: 0.0,
+            max_bricks: 0.0,
         }
     }
 }
@@ -72,9 +72,9 @@ impl SimParams {
             self.predation_energy_fraction,
             self.max_energy,
             self.overlay_mode,
-            self._pad17,
-            self._pad18,
-            self._pad19,
+            self.sparse_mode,
+            self.brick_grid_dim,
+            self.max_bricks,
         ];
         let mut bytes = Vec::with_capacity(fields.len() * 4);
         for f in &fields {

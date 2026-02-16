@@ -28,9 +28,9 @@ struct SimParams {
     predation_energy_fraction: f32,
     max_energy: f32,
     overlay_mode: f32,
-    _pad17: f32,
-    _pad18: f32,
-    _pad19: f32,
+    sparse_mode: f32,
+    brick_grid_dim: f32,
+    max_bricks: f32,
 };
 
 @group(0) @binding(0) var<storage, read_write> voxel_buf: array<u32>;
@@ -73,7 +73,13 @@ fn apply_commands_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
 
-    let idx = grid_index(gid, gs);
+    var idx: u32;
+    if params.sparse_mode > 0.0 {
+        idx = sparse_voxel_index(gid, gs);
+        if idx == 0xFFFFFFFFu { return; }
+    } else {
+        idx = grid_index(gid, gs);
+    }
     let my_pos = vec3<i32>(gid);
 
     for (var c: u32 = 0u; c < command_count; c++) {

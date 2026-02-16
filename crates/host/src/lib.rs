@@ -67,43 +67,69 @@ pub async fn init() -> Result<(), JsValue> {
     // Initialize GPU
     let gpu = gpu::init_gpu(canvas).await.map_err(|e| JsValue::from_str(&e))?;
 
-    // Try grid sizes from detected tier downward
-    let tiers = [128u32, 96, 64];
-    let start_idx = match gpu.grid_size {
-        128 => 0,
-        96 => 1,
-        _ => 2,
-    };
-
-    let mut grid_size = 0u32;
+    // Try grid sizes from detected tier downward, including sparse
     let mut sim_engine = None;
+    let mut grid_size = 0u32;
 
-    for &tier_size in &tiers[start_idx..] {
-        web_sys::console::log_1(&format!("Trying grid {}³...", tier_size).into());
-        match SimEngine::try_new(&gpu.device, &gpu.queue, tier_size) {
+    // If tier supports sparse 256³, try that first
+    if gpu.tier.is_sparse() {
+        let max_bricks = 3200u32; // ~10% occupancy budget
+        web_sys::console::log_1(&format!("Trying sparse 256³ ({max_bricks} max bricks)...").into());
+        match SimEngine::try_new_sparse(&gpu.device, &gpu.queue, 256, max_bricks) {
             Ok(engine) => {
-                grid_size = tier_size;
+                grid_size = 256;
                 sim_engine = Some(engine);
-                web_sys::console::log_1(
-                    &format!("Grid size: {grid_size}\u{00b3}").into(),
-                );
-                break;
+                web_sys::console::log_1(&"Sparse 256\u{00b3} initialized".into());
             }
             Err(e) => {
                 web_sys::console::warn_1(
-                    &format!("Grid {}³ failed: {}. Trying smaller...", tier_size, e).into(),
+                    &format!("Sparse 256³ failed: {}. Falling back to dense...", e).into(),
                 );
             }
         }
     }
 
-    let sim_engine = sim_engine.ok_or_else(|| {
+    // Dense fallback: try 128, 96, 64
+    if sim_engine.is_none() {
+        let dense_tiers = [128u32, 96, 64];
+        let start_idx = match gpu.grid_size {
+            256 => 0, // sparse failed, start at 128
+            128 => 0,
+            96 => 1,
+            _ => 2,
+        };
+
+        for &tier_size in &dense_tiers[start_idx..] {
+            web_sys::console::log_1(&format!("Trying dense grid {}³...", tier_size).into());
+            match SimEngine::try_new(&gpu.device, &gpu.queue, tier_size) {
+                Ok(engine) => {
+                    grid_size = tier_size;
+                    sim_engine = Some(engine);
+                    web_sys::console::log_1(
+                        &format!("Grid size: {grid_size}\u{00b3}").into(),
+                    );
+                    break;
+                }
+                Err(e) => {
+                    web_sys::console::warn_1(
+                        &format!("Grid {}³ failed: {}. Trying smaller...", tier_size, e).into(),
+                    );
+                }
+            }
+        }
+    }
+
+    let mut sim_engine = sim_engine.ok_or_else(|| {
         JsValue::from_str("Failed to allocate GPU buffers. GPU may lack sufficient memory.")
     })?;
     sim_engine.initialize_grid(&gpu.queue);
 
-    // Create renderer
-    let renderer = Renderer::new(&gpu.device, &gpu.queue, &gpu.surface_config, grid_size);
+    // Create renderer (sparse variant if engine is sparse)
+    let renderer = if sim_engine.is_sparse() {
+        Renderer::new_sparse(&gpu.device, &gpu.queue, &gpu.surface_config, grid_size)
+    } else {
+        Renderer::new(&gpu.device, &gpu.queue, &gpu.surface_config, grid_size)
+    };
 
     // Create camera
     let mut camera = Camera::new(grid_size);
@@ -214,6 +240,7 @@ pub fn frame(dt: f32) {
             app.sim_engine.current_read_buffer(),
             app.sim_engine.params_buffer(),
             app.sim_engine.current_temp_buffer(),
+            app.sim_engine.brick_table_buffer(),
         );
 
         // Render frame (ray march + wireframe)

@@ -35,9 +35,9 @@ struct SimParams {
     predation_energy_fraction: f32,
     max_energy: f32,
     overlay_mode: f32,
-    _pad17: f32,
-    _pad18: f32,
-    _pad19: f32,
+    sparse_mode: f32,
+    brick_grid_dim: f32,
+    max_bricks: f32,
 };
 
 @group(0) @binding(0) var<storage, read> voxel_buf: array<u32>;
@@ -54,7 +54,12 @@ var<workgroup> wg_species_count: array<atomic<u32>, 16>;
 fn stats_reduction_main(@builtin(global_invocation_id) gid: vec3<u32>,
                          @builtin(local_invocation_id) lid: vec3<u32>) {
     let gs = u32(params.grid_size);
-    let total_voxels = gs * gs * gs;
+    var total_voxels: u32;
+    if params.sparse_mode > 0.0 {
+        total_voxels = u32(params.max_bricks) * 512u;
+    } else {
+        total_voxels = gs * gs * gs;
+    }
     let num_workgroups = (total_voxels + 63u) / 64u;
     let total_threads = num_workgroups * 64u;
 
