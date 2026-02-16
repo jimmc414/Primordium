@@ -34,6 +34,7 @@
                 <tr><td>Middle drag</td><td>Pan camera</td></tr>
                 <tr><td>Scroll</td><td>Zoom</td></tr>
             </table>
+            <button id="replay-tutorial">Replay Tutorial</button>
             <p class="dismiss">Press <kbd>?</kbd> or <kbd>Esc</kbd> to close</p>
         </div>
     </div>
@@ -44,6 +45,20 @@
     <canvas id="population-graph" width="400" height="200"></canvas>
     <div id="inspector-tooltip"></div>
     <div id="params-panel"></div>
+    <div id="camera-hint">Right-drag to orbit &middot; Scroll to zoom &middot; Press ? for help</div>
+    <div id="tutorial-overlay">
+        <div id="tutorial-spotlight"></div>
+        <div id="tutorial-card">
+            <div class="tutorial-step-indicator"></div>
+            <h3 class="tutorial-title"></h3>
+            <p class="tutorial-body"></p>
+            <div class="tutorial-buttons">
+                <button class="tutorial-btn" id="tutorial-back">Back</button>
+                <button class="tutorial-btn" id="tutorial-next">Next</button>
+                <button class="tutorial-btn tutorial-skip" id="tutorial-skip">Skip</button>
+            </div>
+        </div>
+    </div>
     <script type="module" src="ui.js"></script>
     <script type="module" src="input.js"></script>
 </body>

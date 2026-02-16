@@ -359,3 +359,186 @@ html, body {
     background: rgba(40, 100, 40, 0.9);
     color: #fff;
 }
+
+/* ---- Tutorial overlay ---- */
+#tutorial-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1000;
+    pointer-events: none;
+}
+
+#tutorial-spotlight {
+    position: absolute;
+    border-radius: 6px;
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7);
+    z-index: 1000;
+    transition: all 0.3s ease;
+}
+
+#tutorial-card {
+    position: absolute;
+    background: rgba(10, 10, 10, 0.95);
+    border: 1px solid #4af;
+    border-radius: 8px;
+    padding: 16px 20px;
+    color: #ccc;
+    font-family: monospace;
+    font-size: 13px;
+    max-width: 340px;
+    min-width: 280px;
+    pointer-events: auto;
+    z-index: 1001;
+}
+
+.tutorial-step-indicator {
+    color: #666;
+    font-size: 11px;
+    margin-bottom: 4px;
+}
+
+.tutorial-title {
+    color: #4af;
+    font-size: 16px;
+    margin: 0 0 8px 0;
+}
+
+.tutorial-body {
+    line-height: 1.5;
+    margin: 0 0 12px 0;
+}
+
+.tutorial-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.tutorial-btn {
+    background: rgba(40, 100, 180, 0.85);
+    color: #fff;
+    border: 1px solid #4af;
+    border-radius: 4px;
+    padding: 5px 14px;
+    font-family: monospace;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.tutorial-btn:hover {
+    background: rgba(60, 120, 200, 0.95);
+}
+
+.tutorial-skip {
+    margin-left: auto;
+    background: rgba(50, 50, 50, 0.85);
+    border-color: #666;
+    color: #aaa;
+}
+
+.tutorial-skip:hover {
+    background: rgba(70, 70, 70, 0.95);
+    color: #ccc;
+}
+
+/* ---- Hover tooltips ---- */
+#ui-tooltip {
+    display: none;
+    position: fixed;
+    z-index: 900;
+    background: rgba(10, 10, 10, 0.95);
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 5px 10px;
+    color: #ccc;
+    font-family: monospace;
+    font-size: 11px;
+    max-width: 260px;
+    pointer-events: none;
+    white-space: normal;
+}
+
+/* ---- Parameter group headers ---- */
+.param-group-header {
+    color: #4af;
+    font-size: 12px;
+    font-weight: bold;
+    margin-top: 10px;
+    margin-bottom: 4px;
+    padding-bottom: 2px;
+    border-bottom: 1px solid #333;
+}
+
+.param-group-header:first-of-type {
+    margin-top: 4px;
+}
+
+.param-desc {
+    color: #555;
+    font-size: 10px;
+    margin-top: -2px;
+    margin-bottom: 2px;
+}
+
+/* ---- Genome interpretation ---- */
+.genome-interp {
+    color: #666;
+    font-size: 11px;
+}
+
+/* ---- Stats indicators ---- */
+.stat-indicator {
+    font-size: 11px;
+    float: right;
+    margin-left: 4px;
+}
+
+.stat-indicator.critical { color: #f44; }
+.stat-indicator.low { color: #fa4; }
+.stat-indicator.thriving { color: #4a4; }
+.stat-indicator.monoculture { color: #fa4; }
+.stat-indicator.diverse { color: #4a4; }
+
+/* ---- Camera hint ---- */
+#camera-hint {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    background: rgba(10, 10, 10, 0.85);
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 8px 16px;
+    color: #aaa;
+    font-family: monospace;
+    font-size: 12px;
+    pointer-events: none;
+    transition: opacity 0.5s ease;
+}
+
+#camera-hint.hidden {
+    opacity: 0;
+}
+
+/* ---- Replay tutorial button ---- */
+#replay-tutorial {
+    margin-top: 12px;
+    width: 100%;
+    background: rgba(40, 100, 180, 0.6);
+    color: #ccc;
+    border: 1px solid #4af;
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-family: monospace;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+#replay-tutorial:hover {
+    background: rgba(40, 100, 180, 0.85);
+    color: #fff;
+}
